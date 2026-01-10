@@ -1,0 +1,57 @@
+{
+  "name": "@soverstack/runtime",
+  "version": "1.0.0",
+  "description": "Soverstack Runtime - CLI orchestrating infrastructure deployment",
+  "main": "dist/index.js",
+  "bin": {
+    "soverstack-runtime": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "init": "ts-node src/index.ts -- init ",
+    "val": "ts-node src/index.ts -- validate b/platform.yaml",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write 'src/**/*.ts'"
+  },
+  "keywords": [
+    "soverstack",
+    "infrastructure",
+    "orchestration",
+    "ansible",
+    "terraform",
+    "kubernetes"
+  ],
+  "author": "Soverstack",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.962.0",
+    "@azure/storage-blob": "^12.29.1",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "inquirer": "^8.2.6",
+    "js-yaml": "^4.1.0",
+    "open": "^8.4.2",
+    "ora": "^5.4.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^8.2.10",
+    "@types/jest": "^29.5.11",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.5",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.1.1",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

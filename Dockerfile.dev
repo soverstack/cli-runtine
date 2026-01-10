@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SOVERSTACK RUNTIME - DEV IMAGE (Hot Reload)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Image Docker pour le développement avec hot reload
+# Les changements de code sont automatiquement détectés
+#
+# Usage:
+#   docker-compose up
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+FROM node:18-alpine
+
+# Variables d'environnement
+ENV NODE_ENV=development
+
+# Installer les dépendances système pour Ansible et Terraform
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    openssh-client \
+    git \
+    bash \
+    curl \
+    unzip
+
+# Installer Ansible
+RUN pip3 install --no-cache-dir ansible ansible-lint
+
+# Installer Terraform
+ARG TERRAFORM_VERSION=1.6.6
+RUN curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o terraform.zip \
+    && unzip terraform.zip \
+    && mv terraform /usr/local/bin/ \
+    && rm terraform.zip
+
+# Créer le répertoire de travail
+WORKDIR /app
+
+# Copier les fichiers de dépendances
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Installer les dépendances (incluant les dev dependencies)
+RUN npm install
+
+# Copier le code source (sera monté en volume pour le hot reload)
+COPY src/ ./src/
+
+# Exposer le port pour debugging (optionnel)
+EXPOSE 9229
+
+# Utiliser ts-node avec nodemon pour le hot reload
+RUN npm install -g nodemon ts-node
+
+# Point d'entrée : ts-node avec watch
+CMD ["nodemon", "--watch", "src", "--ext", "ts", "--exec", "ts-node", "src/index.ts"]

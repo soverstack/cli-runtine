@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # RUNTIME DEV - Hot Reload
+  # ═══════════════════════════════════════════════════════════════════════════
+  runtime-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: soverstack/runtime:dev
+    container_name: soverstack-runtime-dev
+    volumes:
+      # Mount source code pour hot reload
+      - ./src:/app/src:ro
+      # Mount workspace (projet utilisateur)
+      - ${PWD}:/workspace
+      # Cache node_modules (performance)
+      - node_modules:/app/node_modules
+    working_dir: /workspace
+    environment:
+      - NODE_ENV=development
+      - SOVERSTACK_DEBUG=true
+    # Par défaut, affiche l'aide
+    command: ["--help"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # RUNTIME PROD - Image finale
+  # ═══════════════════════════════════════════════════════════════════════════
+  runtime-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: soverstack/runtime:latest
+    container_name: soverstack-runtime-prod
+    volumes:
+      - ${PWD}:/workspace
+    working_dir: /workspace
+    environment:
+      - NODE_ENV=production
+    command: ["--help"]
+
+volumes:
+  node_modules:
