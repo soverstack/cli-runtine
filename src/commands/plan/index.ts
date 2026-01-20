@@ -130,11 +130,8 @@ function displayPlanSummary(
   console.log(chalk.blue("\n📊 Execution Plan Summary\n"));
 
   // Environment info
-  console.log(chalk.cyan("Environment:"));
-  console.log(chalk.gray(`  • Infrastructure tier: ${plan.infrastructure_tier}`));
-  if (plan.environment) {
-    console.log(chalk.gray(`  • Environment: ${plan.environment}`));
-  }
+  console.log(chalk.cyan("Infrastructure:"));
+  console.log(chalk.gray(`  • Tier: ${plan.infrastructure_tier}`));
   console.log(chalk.gray(`  • Generated at: ${new Date(plan.generated_at).toLocaleString()}\n`));
 
   // Changes summary

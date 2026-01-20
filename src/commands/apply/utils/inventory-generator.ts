@@ -37,7 +37,6 @@ export function generateAnsibleInventory(
         ansible_ssh_private_key_file: "{{ ssh_private_key_path }}",
         ansible_python_interpreter: "/usr/bin/python3",
         infrastructure_tier: normalized.project?.infrastructure_tier || "production",
-        environment: normalized.project?.environment || "prod",
         domain: normalized.project?.domain,
       },
     },
@@ -52,18 +51,18 @@ export function generateAnsibleInventory(
   }
 
   // Add Firewall group
-  if (normalized.firewall?.enabled && normalized.firewall.vm_configuration?.vm_ids) {
-    inventory.all.children.firewalls = generateFirewallGroup(normalized.firewall);
+  if (normalized.networking?.firewall?.enabled && normalized.networking.firewall.vm_ids) {
+    inventory.all.children.firewalls = generateFirewallGroup(normalized.networking.firewall);
   }
 
-  // Add Bastion group
-  if (normalized.bastion?.enabled && normalized.bastion.vm_configuration?.vm_ids) {
-    inventory.all.children.bastions = generateBastionGroup(normalized.bastion);
+  // Add VPN group (replaces bastion)
+  if (normalized.networking?.vpn?.enabled && normalized.networking.vpn.vm_ids) {
+    inventory.all.children.vpn = generateVPNGroup(normalized.networking.vpn);
   }
 
   // Add Kubernetes groups
-  if (normalized.cluster) {
-    const k8sGroups = generateK8sGroups(normalized.cluster);
+  if (normalized.k8s) {
+    const k8sGroups = generateK8sGroups(normalized.k8s);
     Object.assign(inventory.all.children, k8sGroups);
   }
 
@@ -103,13 +102,11 @@ function generateProxmoxGroup(servers: any[], envVars: Map<string, string>): Inv
 function generateFirewallGroup(firewall: any): InventoryGroup {
   const hosts: Record<string, any> = {};
 
-  firewall.vm_configuration.vm_ids.forEach((vmId: number, index: number) => {
+  firewall.vm_ids.forEach((vmId: number, index: number) => {
     const hostname = `firewall-${index + 1}`;
     hosts[hostname] = {
       vm_id: vmId,
       firewall_type: firewall.type,
-      public_ip: firewall.public_ip,
-      os_template: firewall.vm_configuration.os_template,
     };
   });
 
@@ -123,29 +120,26 @@ function generateFirewallGroup(firewall: any): InventoryGroup {
 }
 
 /**
- * Generates Bastion group
+ * Generates VPN group (Headscale)
  */
-function generateBastionGroup(bastion: any): InventoryGroup {
+function generateVPNGroup(vpn: any): InventoryGroup {
   const hosts: Record<string, any> = {};
 
-  bastion.vm_configuration.vm_ids.forEach((vmId: number, index: number) => {
-    const hostname = `bastion-${index + 1}`;
+  vpn.vm_ids.forEach((vmId: number, index: number) => {
+    const hostname = `vpn-${index + 1}`;
     hosts[hostname] = {
       vm_id: vmId,
-      bastion_type: bastion.type,
-      public_ip: bastion.public_ip,
-      vpn_subnet: bastion.vpn_subnet,
-      database_type: bastion.database_type,
-      os_template: bastion.vm_configuration.os_template,
+      vpn_type: vpn.type,
+      vpn_subnet: vpn.vpn_subnet,
     };
   });
 
   return {
     hosts,
     vars: {
-      bastion_enabled: true,
-      bastion_type: bastion.type,
-      oidc_enforced: true,
+      vpn_enabled: true,
+      vpn_type: vpn.type,
+      oidc_enforced: vpn.oidc_enforced ?? true,
     },
   };
 }
@@ -250,24 +244,18 @@ export function generateGroupVars(
   // Proxmox servers group vars
   if (normalized.datacenter) {
     const proxmoxVars = {
-      // Network configuration
-      network_type: normalized.datacenter.network?.type,
-      failover_subnet: normalized.datacenter.network?.failover_subnet,
+      // Datacenter name
+      datacenter_name: normalized.datacenter.name,
 
-      // Ceph configuration
-      ceph_enabled: normalized.datacenter.ceph?.enabled || false,
-      ceph_public_network: normalized.datacenter.ceph?.public_network,
-      ceph_private_network: normalized.datacenter.ceph?.private_network,
+      // Server list
+      servers: normalized.datacenter.servers.map((s) => ({
+        name: s.name,
+        id: s.id,
+        ip: s.ip,
+        os: s.os,
+      })),
 
-      // Cluster configuration
-      cluster_private_network: normalized.datacenter.cluster?.private_network,
-      cluster_public_network: normalized.datacenter.cluster?.public_network,
-
-      // Alerting
-      admin_email: normalized.datacenter.alert?.admin_email,
-
-      // SECURITY: Passwords are loaded from env vars
-      // Use Ansible vault or env vars at runtime
+      // SECURITY: Passwords are loaded from CredentialRef at runtime
     };
 
     fs.writeFileSync(
@@ -277,7 +265,7 @@ export function generateGroupVars(
   }
 
   // Kubernetes masters group vars
-  if (normalized.cluster?.master_nodes) {
+  if (normalized.k8s?.master_nodes) {
     const k8sMastersVars = {
       k8s_version: "1.28.0", // Should come from config
       etcd_data_dir: "/var/lib/etcd",
@@ -293,7 +281,7 @@ export function generateGroupVars(
   }
 
   // Kubernetes workers group vars
-  if (normalized.cluster?.worker_nodes) {
+  if (normalized.k8s?.worker_nodes) {
     const k8sWorkersVars = {
       kubelet_max_pods: 110,
       kube_proxy_mode: "iptables",

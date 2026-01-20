@@ -3,173 +3,342 @@ import {
   Datacenter,
   ComputeConfig,
   K8sCluster,
-  Firewall,
-  Bastion,
-  Feature,
-  IdentityProvider,
   BackendType,
   InfrastructureTierType,
+  NetworkingConfig,
+  SecurityConfig,
+  ObservabilityConfig,
+  DatabasesLayer,
+  DatabaseCluster,
+  AppsConfig,
+  LayerPaths,
+  DatacenterEntry,
 } from "@/types";
 import { loadYaml } from "./yaml-loader";
 import path from "path";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTI-FILE LAYER MERGE LOGIC
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Error thrown when merging fails due to duplicate non-array properties
+ */
+export class MergeConflictError extends Error {
+  constructor(
+    public property: string,
+    public file1: string,
+    public file2: string
+  ) {
+    super(
+      `Property '${property}' declared in multiple files:\n` +
+        `  - ${file1}\n` +
+        `  - ${file2}\n\n` +
+        `Define '${property}' in one file only.`
+    );
+    this.name = "MergeConflictError";
+  }
+}
+
+/**
+ * Properties that should be merged as arrays (concatenated)
+ */
+const ARRAY_MERGE_PROPERTIES: Record<string, string[]> = {
+  compute: ["instance_type_definitions", "virtual_machines", "linux_containers"],
+  database: ["clusters"], // DatabaseCluster[] - clusters are concatenated
+};
+
+/**
+ * Parse comma-separated file paths from layer config
+ */
+function parseLayerPaths(layerConfig: string): string[] {
+  return layerConfig
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Merge multiple layer files into one
+ * - Arrays at root level: concatenate
+ * - Non-arrays: error if declared in multiple files
+ *
+ * SPECIAL CASE FOR DATABASE:
+ * - First file should be the full DatabaseCluster (type, version, cluster, databases, credentials)
+ * - Additional files can contain just { databases: [...] } to add more DatabaseDefinition[]
+ * - The databases arrays are merged into the cluster from the first file
+ */
+async function mergeLayerFiles<T>(
+  filePaths: string[],
+  platformYamlDir: string,
+  layerName: string
+): Promise<{ merged: T; files: string[] }> {
+  if (filePaths.length === 0) {
+    return { merged: {} as T, files: [] };
+  }
+
+  if (filePaths.length === 1) {
+    const fullPath = path.resolve(platformYamlDir, filePaths[0]);
+    const data = await loadYaml<T>(fullPath);
+    return { merged: data, files: [filePaths[0]] };
+  }
+
+  const arrayProps = ARRAY_MERGE_PROPERTIES[layerName] || [];
+  const merged: Record<string, any> = {};
+  const propertySource: Record<string, string> = {};
+
+  for (const filePath of filePaths) {
+    const fullPath = path.resolve(platformYamlDir, filePath);
+    const data = await loadYaml<Record<string, any>>(fullPath);
+
+    if (!data) continue;
+
+    for (const [key, value] of Object.entries(data)) {
+      if (arrayProps.includes(key) && Array.isArray(value)) {
+        if (!merged[key]) {
+          merged[key] = [];
+        }
+        merged[key] = [...merged[key], ...value];
+        propertySource[key] = filePath;
+      } else if (merged[key] !== undefined) {
+        throw new MergeConflictError(key, propertySource[key], filePath);
+      } else {
+        merged[key] = value;
+        propertySource[key] = filePath;
+      }
+    }
+  }
+
+  return { merged: merged as T, files: filePaths };
+}
+
+/**
+ * Merge database layer files
+ *
+ * DATABASE MERGE STRATEGY:
+ * - Each file contains: { clusters: DatabaseCluster[] }
+ * - All clusters from all files are concatenated into a single array
+ *
+ * Result: DatabasesLayer with all clusters merged
+ */
+async function mergeDatabaseFiles(
+  filePaths: string[],
+  platformYamlDir: string
+): Promise<DatabasesLayer> {
+  if (filePaths.length === 0) {
+    return { clusters: [] };
+  }
+
+  const allClusters: DatabaseCluster[] = [];
+
+  // Load and merge clusters from all files
+  for (const filePath of filePaths) {
+    const fullPath = path.resolve(platformYamlDir, filePath);
+    const data = await loadYaml<DatabasesLayer>(fullPath);
+
+    if (data?.clusters && Array.isArray(data.clusters)) {
+      allClusters.push(...data.clusters);
+    }
+  }
+
+  return { clusters: allClusters };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NORMALIZED INFRASTRUCTURE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalized datacenter structure - layers for a single datacenter
+ */
+export interface NormalizedDatacenter {
+  name: string;
+  datacenter?: Datacenter;
+  networking?: NetworkingConfig;
+  security?: SecurityConfig;
+  compute?: ComputeConfig;
+  database?: DatabasesLayer;
+  observability?: ObservabilityConfig;
+  k8s?: K8sCluster;
+  apps?: AppsConfig;
+  ssh?: string;
+}
+
 /**
  * Normalized infrastructure structure - used internally for validation
- * Both "simple" and "advanced" modes are normalized to this format
+ *
+ * Supports both single-DC and multi-DC modes:
+ * - Single DC: Use `datacenter`, `compute`, etc. directly
+ * - Multi-DC: Use `datacenters` array
  */
 export interface NormalizedInfrastructure {
   project: {
     name: string;
-    environment?: string;
     domain: string;
     infrastructure_tier: InfrastructureTierType;
     version: string;
   };
-  datacenter: Datacenter;
-  firewall?: Firewall;
-  bastion?: Bastion;
-  iam?: IdentityProvider;
-  compute: ComputeConfig;
-  cluster?: K8sCluster;
-  features?: Feature;
-  ssh?: string; // path to ssh config
+
+  // Multi-DC mode: array of normalized datacenters
+  datacenters?: NormalizedDatacenter[];
+
+  // Single-DC mode (legacy): layers at root level
+  datacenter?: Datacenter;
+  networking?: NetworkingConfig;
+  security?: SecurityConfig;
+  compute?: ComputeConfig;
+  database?: DatabasesLayer;
+  observability?: ObservabilityConfig;
+  k8s?: K8sCluster;
+  apps?: AppsConfig;
+  ssh?: string;
+
+  // State config
   state?: {
-    backend: BackendType; // local, aws,gcr
+    backend: BackendType;
     path: string;
   };
 }
 
 /**
+ * Default layer paths (convention over configuration)
+ */
+const DEFAULT_LAYER_PATHS: LayerPaths = {
+  datacenter: "./datacenter.yaml",
+  compute: "./core-compute.yaml, ./compute.yaml",
+  database: "./core-database.yaml, ./database.yaml",
+  networking: "./networking.yaml",
+  security: "./security.yaml",
+  observability: "./observability.yaml",
+};
+
+/**
+ * Normalizes layers from a directory
+ */
+async function normalizeLayersFromDir(
+  baseDir: string,
+  layers: LayerPaths
+): Promise<Omit<NormalizedDatacenter, "name">> {
+  // Load datacenter
+  let datacenter: Datacenter | undefined;
+  if (layers.datacenter) {
+    const datacenterPath = path.resolve(baseDir, layers.datacenter);
+    datacenter = await loadYaml<Datacenter>(datacenterPath);
+  }
+
+  // Load networking
+  let networking: NetworkingConfig | undefined;
+  if (layers.networking) {
+    const networkingPath = path.resolve(baseDir, layers.networking);
+    networking = await loadYaml<NetworkingConfig>(networkingPath);
+  }
+
+  // Load security
+  let security: SecurityConfig | undefined;
+  if (layers.security) {
+    const securityPath = path.resolve(baseDir, layers.security);
+    security = await loadYaml<SecurityConfig>(securityPath);
+  }
+
+  // Load compute with multi-file support
+  let compute: ComputeConfig | undefined;
+  if (layers.compute) {
+    const computePaths = parseLayerPaths(layers.compute);
+    const { merged } = await mergeLayerFiles<ComputeConfig>(computePaths, baseDir, "compute");
+    compute = {
+      instance_type_definitions: merged.instance_type_definitions || [],
+      virtual_machines: merged.virtual_machines || [],
+      linux_containers: merged.linux_containers || [],
+    };
+  }
+
+  // Load database with multi-file support
+  let database: DatabasesLayer | undefined;
+  if (layers.database) {
+    const databasePaths = parseLayerPaths(layers.database);
+    database = await mergeDatabaseFiles(databasePaths, baseDir);
+  }
+
+  // Load observability
+  let observability: ObservabilityConfig | undefined;
+  if (layers.observability) {
+    const observabilityPath = path.resolve(baseDir, layers.observability);
+    observability = await loadYaml<ObservabilityConfig>(observabilityPath);
+  }
+
+  // Load K8s cluster (optional)
+  let k8s: K8sCluster | undefined;
+  if (layers.k8s) {
+    const k8sPath = path.resolve(baseDir, layers.k8s);
+    k8s = await loadYaml<K8sCluster>(k8sPath);
+  }
+
+  // Load apps (optional)
+  let apps: AppsConfig | undefined;
+  if (layers.apps) {
+    const appsPath = path.resolve(baseDir, layers.apps);
+    apps = await loadYaml<AppsConfig>(appsPath);
+  }
+
+  return { datacenter, networking, security, compute, database, observability, k8s, apps };
+}
+
+/**
  * Normalizes infrastructure configuration to a unified format
  *
- * STRATEGY:
- * - Simple mode: Already in unified format, just extract it
- * - Advanced mode: Load and merge separate layer files
+ * Supports both single-DC and multi-DC modes:
+ * - Single DC: layers defined in platform.yaml
+ * - Multi-DC: datacenters array, files in ./datacenters/{name}/
  *
  * @param platform - Platform configuration from platform.yaml
- * @param platformYamlDir - Directory containing platform.yaml (for resolving relative paths)
+ * @param platformYamlDir - Directory containing platform.yaml
  * @returns Normalized infrastructure ready for validation
  */
 export async function normalizeInfrastructure(
   platform: Platform,
   platformYamlDir: string
 ): Promise<NormalizedInfrastructure> {
-  // Determine if simple or advanced mode
-  const isSimpleMode = !platform.layers.compute && !platform.layers.clusters;
-
-  if (isSimpleMode) {
-    return await normalizeSimpleMode(platform, platformYamlDir);
-  } else {
-    return await normalizeAdvancedMode(platform, platformYamlDir);
-  }
-}
-
-/**
- * Simple mode: Single infrastructure.yaml file
- * Already contains everything in unified format
- */
-async function normalizeSimpleMode(
-  platform: Platform,
-  platformYamlDir: string
-): Promise<NormalizedInfrastructure> {
-  const infrastructurePath = path.resolve(platformYamlDir, platform.layers as any);
-  const infrastructure = await loadYaml<any>(infrastructurePath);
-
-  return {
+  const baseResult: NormalizedInfrastructure = {
     project: {
       name: platform.project_name,
-      environment: platform.environment,
-      domain: platform.domain,
+      domain: platform.domain || "example.com",
       infrastructure_tier: platform.infrastructure_tier,
       version: platform.version,
     },
-    datacenter: infrastructure.datacenter,
-    firewall: infrastructure.firewall,
-    bastion: infrastructure.bastion,
-    iam: infrastructure.iam,
-    compute: infrastructure.compute,
-    cluster: infrastructure.cluster,
-    features: infrastructure.features,
-    ssh: infrastructure.ssh || platform.ssh,
-    state: infrastructure.state || platform.state,
-  };
-}
-
-/**
- * Advanced mode: Separate layer files
- * Load each layer and merge into unified structure
- */
-async function normalizeAdvancedMode(
-  platform: Platform,
-  platformYamlDir: string
-): Promise<NormalizedInfrastructure> {
-  const layers = platform.layers;
-
-  // Load datacenter (required)
-  const datacenterPath = path.resolve(platformYamlDir, layers.datacenter);
-  const datacenter = await loadYaml<Datacenter>(datacenterPath);
-
-  // Load firewall (optional)
-  let firewall: Firewall | undefined;
-  if (layers.firewall) {
-    const firewallPath = path.resolve(platformYamlDir, layers.firewall);
-    firewall = await loadYaml<Firewall>(firewallPath);
-  }
-
-  // Load bastion (optional)
-  let bastion: Bastion | undefined;
-  if (layers.bastions) {
-    const bastionPath = path.resolve(platformYamlDir, layers.bastions);
-    bastion = await loadYaml<Bastion>(bastionPath);
-  }
-
-  // Load IAM (optional)
-  let iam: IdentityProvider | undefined;
-  if (layers.iam) {
-    const iamPath = path.resolve(platformYamlDir, layers.iam);
-    iam = await loadYaml<IdentityProvider>(iamPath);
-  }
-  // Load compute (optional but recommended)
-  let compute: ComputeConfig | undefined;
-  if (layers.compute) {
-    const computePath = path.resolve(platformYamlDir, layers.compute);
-    compute = await loadYaml<ComputeConfig>(computePath);
-  }
-
-  // Load cluster (optional)
-  let cluster: K8sCluster | undefined;
-  if (layers.clusters) {
-    const clusterPath = path.resolve(platformYamlDir, layers.clusters);
-    cluster = await loadYaml<K8sCluster>(clusterPath);
-  }
-
-  // Load features (optional)
-  let features: Feature | undefined;
-  if (layers.features) {
-    const featuresPath = path.resolve(platformYamlDir, layers.features);
-    features = await loadYaml<Feature>(featuresPath);
-  }
-
-  return {
-    project: {
-      name: platform.project_name,
-      environment: platform.environment,
-      domain: platform.domain,
-      infrastructure_tier: platform.infrastructure_tier,
-      version: platform.version,
-    },
-    datacenter,
-    firewall,
-    bastion,
-    iam,
-    compute: compute || {
-      instance_type_definitions: [],
-      virtual_machines: [],
-      linux_containers: [],
-    },
-    cluster,
-    features,
-    ssh: platform.ssh,
     state: platform.state,
   };
+
+  // Multi-DC mode: datacenters array with explicit paths
+  if (platform.datacenters && platform.datacenters.length > 0) {
+    const normalizedDCs: NormalizedDatacenter[] = [];
+
+    for (const dcEntry of platform.datacenters) {
+      // Paths are explicit in the config - use platformYamlDir as base
+      const dcLayers = await normalizeLayersFromDir(platformYamlDir, dcEntry.layers);
+
+      normalizedDCs.push({
+        name: dcEntry.name,
+        ...dcLayers,
+        ssh: dcEntry.ssh,
+      });
+    }
+
+    return {
+      ...baseResult,
+      datacenters: normalizedDCs,
+    };
+  }
+
+  // Single-DC mode: layers at root level
+  if (platform.layers) {
+    const layers = await normalizeLayersFromDir(platformYamlDir, platform.layers);
+
+    return {
+      ...baseResult,
+      ...layers,
+      ssh: platform.ssh,
+    };
+  }
+
+  return baseResult;
 }

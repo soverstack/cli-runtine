@@ -7,52 +7,39 @@ import {
   addWarning,
   addError,
 } from "./utils/types";
-import { loadYamlFile, validateFilePath } from "./utils/yaml-loader";
+import { loadYamlFile } from "./utils/yaml-loader";
 import { normalizeInfrastructure, NormalizedInfrastructure } from "./utils/normalizer";
 import { applyDefaults } from "./utils/defaults";
 import { validateSshConfig } from "./rules/ssh-validation";
 import { loadEnvVariables } from "./rules/path-validation";
-import { generatePlan, loadPlan, savePlan, InfrastructurePlan } from "./utils/plan-generator";
+import { generatePlan, loadPlan, savePlan } from "./utils/plan-generator";
 import { validateAllSecrets } from "./rules/generic-secrets-validator";
 import {
   validateDatacenter,
   validateCompute,
   validateCluster,
-  validateFirewall,
-  validateBastion,
-  validateIAM,
-  validateFeature,
+  validateDatabases,
+  validateNetworking,
 } from "./validators";
-import {
-  Datacenter,
-  ComputeConfig,
-  K8sCluster,
-  Firewall,
-  Bastion,
-  IdentityProvider,
-  Feature,
-  Platform,
-  LayerType,
-} from "../../types";
+import { Platform, LayerType, InfrastructureTierType } from "../../types";
 
 export interface ValidateOptions {
   platformYamlPath: string;
   layer?: LayerType;
   verbose?: boolean;
-  generatePlan?: boolean; // Generate execution plan
-  planOutputPath?: string; // Where to save the plan
+  generatePlan?: boolean;
+  planOutputPath?: string;
 }
 
 /**
  * Main validation orchestrator
  *
- * ARCHITECTURE:
+ * VALIDATION ORDER:
  * 1. Load platform.yaml
- * 2. Normalize (merge advanced mode or extract simple mode) → NormalizedInfrastructure
+ * 2. Normalize (merge all layer files) → NormalizedInfrastructure
  * 3. Apply defaults (security, HA, network defaults)
- * 4. Validate the normalized infrastructure
- *
- * This ensures both "simple" and "advanced" modes are validated the same way
+ * 4. Validate each layer in dependency order:
+ *    datacenter → networking → security → compute → database → observability → k8s → apps
  */
 export async function validateInfrastructure(options: ValidateOptions): Promise<ValidationResult> {
   const result = createValidationResult();
@@ -78,33 +65,30 @@ export async function validateInfrastructure(options: ValidateOptions): Promise<
       field: "layers",
       message: "Platform layers configuration is missing",
       severity: "critical",
-      suggestion: "Add layers section with datacenter, compute, clusters, and features",
+      suggestion: "Add layers section with datacenter, compute, networking, security",
     });
     return result;
   }
 
-  // Validate environment configuration
   const platformDir = path.dirname(path.resolve(options.platformYamlPath));
-  validateEnvironments(platform, platformDir, result);
 
   // Load environment variables for validation
-  const envVars = loadEnvVariables(platformDir, platform.environment);
+  const envVars = loadEnvVariables(platformDir);
 
   // Validate SSH configuration
-  let sshConfig = null;
   if (platform.ssh) {
-    sshConfig = validateSshConfig(platform.ssh, platformDir, result, envVars);
+    validateSshConfig(platform.ssh, platformDir, result, envVars);
   } else {
     addWarning(
       result,
       "platform",
       "ssh",
       "SSH configuration not found",
-      "Add SSH configuration to enable secure server management"
+      "Add SSH configuration for secure server management"
     );
   }
 
-  // Step 2: Normalize infrastructure (merge advanced mode or extract simple mode)
+  // Step 2: Normalize infrastructure (merge all layer files)
   let normalized: NormalizedInfrastructure;
 
   try {
@@ -120,312 +104,185 @@ export async function validateInfrastructure(options: ValidateOptions): Promise<
     return result;
   }
 
-  // Step 3: Apply defaults (security, HA, network)
+  // Step 3: Apply defaults
   normalized = applyDefaults(normalized);
 
-  // Step 4: Validate in dependency order (using normalized infrastructure)
-  // Datacenter → Firewall → Bastion → Compute → Cluster → Features
+  // Step 4: Validate in dependency order
+  const tier = normalized.project?.infrastructure_tier || "production";
 
   // If specific layer requested, only validate that
   if (options.layer) {
-    validateSpecificLayer(options.layer, normalized, context, result, envVars);
+    validateSpecificLayer(options.layer, normalized, context, result, tier, platformDir, envVars);
     return result;
   }
 
-  // Otherwise, validate all layers in order
-  const infrastructureTier = normalized.project?.infrastructure_tier || "production";
-
   // Validate mandatory layers for non-local tiers
-  if (infrastructureTier !== "local") {
-    // Datacenter is always required
-    if (!normalized.datacenter) {
-      addError(
-        result,
-        "platform",
-        "layers.datacenter",
-        `Datacenter layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add datacenter configuration"
-      );
-    }
+  validateMandatoryLayers(normalized, tier, result);
 
-    // Firewall is mandatory for production/enterprise
-    if (!normalized.firewall) {
-      addError(
-        result,
-        "platform",
-        "layers.firewall",
-        `Firewall layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add firewall configuration with VyOS for network security"
-      );
-    }
-
-    // Bastion is mandatory for production/enterprise
-    if (!normalized.bastion) {
-      addError(
-        result,
-        "platform",
-        "layers.bastion",
-        `Bastion layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add bastion configuration with Headscale for secure VPN access"
-      );
-    }
-
-    // Compute is mandatory for production/enterprise
-    if (!normalized.compute || normalized.compute.virtual_machines.length === 0) {
-      addError(
-        result,
-        "platform",
-        "layers.compute",
-        `Compute layer with VMs is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add compute configuration with at least one VM"
-      );
-    }
-  }
-
-  // 4.1: Datacenter (foundational)
+  // 4.1: Datacenter (foundational - physical servers)
   if (normalized.datacenter) {
-    validateDatacenter(normalized.datacenter, context, result, infrastructureTier, envVars);
+    validateDatacenter(normalized.datacenter, context, result, tier, envVars);
     validateAllSecrets(normalized.datacenter, "datacenter", "", platformDir, envVars, result);
   }
 
-  // 4.2: Firewall
-  if (normalized.firewall) {
-    validateFirewall(normalized.firewall, context, result, infrastructureTier);
-    validateAllSecrets(normalized.firewall, "firewall", "", platformDir, envVars, result);
+  // 4.2: Networking (firewall, vpn, dns, public_ip)
+  if (normalized.networking) {
+    validateNetworking(normalized.networking, context, result, tier);
+    validateAllSecrets(normalized.networking, "networking", "", platformDir, envVars, result);
   }
 
-  // 4.3: Bastion
-  if (normalized.bastion) {
-    validateBastion(normalized.bastion, context, result, infrastructureTier);
-    validateAllSecrets(normalized.bastion, "bastion", "", platformDir, envVars, result);
-  }
-
-  // 4.4: IAM (MANDATORY for production/enterprise)
-  if (normalized.iam) {
-    validateIAM(normalized.iam, context, result, infrastructureTier);
-    validateAllSecrets(normalized.iam, "iam", "", platformDir, envVars, result);
-  } else if (infrastructureTier === "production" || infrastructureTier === "enterprise") {
-    // IAM is MANDATORY for production/enterprise
-    addError(
-      result,
-      "platform",
-      "layers.iam",
-      `IAM layer is mandatory for ${infrastructureTier} tier`,
-      "critical",
-      "Add IAM configuration with Keycloak for identity and access management"
-    );
-  }
-  // 4.5: Compute (needs datacenter context)
+  // 4.3: Compute (VMs)
   if (normalized.compute) {
-    validateCompute(normalized.compute, context, result, infrastructureTier);
+    validateCompute(normalized.compute, context, result, tier);
     validateAllSecrets(normalized.compute, "compute", "", platformDir, envVars, result);
   }
 
-  // 4.6: Clusters (needs compute context)
-  if (normalized.cluster) {
-    validateCluster(normalized.cluster, context, result, infrastructureTier);
-    validateAllSecrets(normalized.cluster, "cluster", "", platformDir, envVars, result);
+  // 4.4: Database (PostgreSQL clusters)
+  if (normalized.database) {
+    validateDatabases(normalized.database, context, result, tier);
+    validateAllSecrets(normalized.database, "database", "", platformDir, envVars, result);
   }
 
-  // 4.7: Features (needs cluster context)
-  if (normalized.features) {
-    validateFeature(normalized.features, context, result, infrastructureTier);
-    validateAllSecrets(normalized.features, "features", "", platformDir, envVars, result);
+  // 4.5: K8s Cluster (optional)
+  if (normalized.k8s) {
+    validateCluster(normalized.k8s, context, result, tier);
+    validateAllSecrets(normalized.k8s, "cluster", "", platformDir, envVars, result);
   }
 
   // Generate execution plan if requested and validation passed
   if (options.generatePlan && result.valid && result.errors.length === 0) {
-    try {
-      // Load existing plan if it exists
-      const existingPlan = options.planOutputPath ? loadPlan(options.planOutputPath) : null;
-
-      // Generate new plan
-      const plan = generatePlan(normalized, existingPlan || undefined);
-      plan.validation_passed = true;
-
-      // Save plan
-      const planPath = options.planOutputPath || path.join(platformDir, ".soverstack", "plan.yaml");
-
-      // Create directory if it doesn't exist
-      const planDir = path.dirname(planPath);
-      if (!fs.existsSync(planDir)) {
-        fs.mkdirSync(planDir, { recursive: true });
-      }
-
-      savePlan(plan, planPath);
-
-      addWarning(
-        result,
-        "platform",
-        "plan",
-        `Execution plan generated: ${planPath}`,
-        `Plan contains ${plan.summary.to_create} resources to create, ${plan.summary.to_update} to update, ${plan.summary.to_delete} to delete`
-      );
-    } catch (error) {
-      addWarning(
-        result,
-        "platform",
-        "plan",
-        `Failed to generate execution plan: ${(error as Error).message}`,
-        "Validation passed but plan generation failed"
-      );
-    }
+    generateExecutionPlan(options, normalized, platformDir, result);
   }
 
   return result;
 }
 
 /**
- * Validates only a specific layer from normalized infrastructure
+ * Validates mandatory layers based on infrastructure tier
+ */
+function validateMandatoryLayers(
+  normalized: NormalizedInfrastructure,
+  tier: string,
+  result: ValidationResult
+): void {
+  if (tier === "local") return; // Local tier has relaxed requirements
+
+  // Datacenter is always required
+  if (!normalized.datacenter) {
+    addError(
+      result,
+      "platform",
+      "layers.datacenter",
+      `Datacenter layer is mandatory for ${tier} tier`,
+      "critical",
+      "Add datacenter.yaml with physical server configuration"
+    );
+  }
+
+  // Networking is required (contains firewall and vpn)
+  if (!normalized.networking) {
+    addError(
+      result,
+      "platform",
+      "layers.networking",
+      `Networking layer is mandatory for ${tier} tier`,
+      "critical",
+      "Add networking.yaml with firewall and VPN configuration"
+    );
+  } else {
+    // Firewall must be enabled
+    if (!normalized.networking.firewall?.enabled) {
+      addError(
+        result,
+        "platform",
+        "networking.firewall",
+        `Firewall must be enabled for ${tier} tier`,
+        "critical",
+        "Enable firewall in networking.yaml"
+      );
+    }
+
+    // VPN must be enabled
+    if (!normalized.networking.vpn?.enabled) {
+      addError(
+        result,
+        "platform",
+        "networking.vpn",
+        `VPN must be enabled for ${tier} tier`,
+        "critical",
+        "Enable VPN (Headscale) in networking.yaml"
+      );
+    }
+  }
+
+  // Compute is required
+  if (!normalized.compute || normalized.compute.virtual_machines.length === 0) {
+    addError(
+      result,
+      "platform",
+      "layers.compute",
+      `Compute layer with VMs is mandatory for ${tier} tier`,
+      "critical",
+      "Add compute configuration with at least one VM"
+    );
+  }
+}
+
+/**
+ * Validates only a specific layer
  */
 function validateSpecificLayer(
   layer: string,
   normalized: NormalizedInfrastructure,
   context: ValidationContext,
   result: ValidationResult,
+  tier: InfrastructureTierType,
+  platformDir: string,
   envVars: Map<string, string>
 ): void {
-  const infrastructureTier = normalized.project?.infrastructure_tier || "production";
-
-  // Validate mandatory layers for non-local tiers
-  if (infrastructureTier !== "local") {
-    // Datacenter is always required
-    if (!normalized.datacenter) {
-      addError(
-        result,
-        "platform",
-        "layers.datacenter",
-        `Datacenter layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add datacenter configuration"
-      );
-    }
-
-    // Firewall is mandatory for production/enterprise
-    if (!normalized.firewall) {
-      addError(
-        result,
-        "platform",
-        "layers.firewall",
-        `Firewall layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add firewall configuration with VyOS for network security"
-      );
-    }
-
-    // Bastion is mandatory for production/enterprise
-    if (!normalized.bastion) {
-      addError(
-        result,
-        "platform",
-        "layers.bastion",
-        `Bastion layer is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add bastion configuration with Headscale for secure VPN access"
-      );
-    }
-
-    // Compute is mandatory for production/enterprise
-    if (!normalized.compute || normalized.compute.virtual_machines.length === 0) {
-      addError(
-        result,
-        "platform",
-        "layers.compute",
-        `Compute layer with VMs is mandatory for ${infrastructureTier} tier`,
-        "critical",
-        "Add compute configuration with at least one VM"
-      );
-    }
-  }
-
-  const platformDir = ""; // Will be set properly
-
   switch (layer) {
     case "datacenter":
       if (normalized.datacenter) {
-        validateDatacenter(normalized.datacenter, context, result, infrastructureTier, envVars);
+        validateDatacenter(normalized.datacenter, context, result, tier, envVars);
         validateAllSecrets(normalized.datacenter, "datacenter", "", platformDir, envVars, result);
       } else {
-        result.errors.push({
-          layer: "platform",
-          field: "datacenter",
-          message: "Datacenter configuration not found",
-          severity: "error",
-        });
+        addError(result, "platform", "datacenter", "Datacenter configuration not found", "error");
       }
       break;
 
-    case "firewall":
-      if (normalized.firewall) {
-        validateFirewall(normalized.firewall, context, result, infrastructureTier);
-        validateAllSecrets(normalized.firewall, "firewall", "", platformDir, envVars, result);
+    case "networking":
+      if (normalized.networking) {
+        validateNetworking(normalized.networking, context, result, tier);
+        validateAllSecrets(normalized.networking, "networking", "", platformDir, envVars, result);
       } else {
-        result.errors.push({
-          layer: "platform",
-          field: "firewall",
-          message: "Firewall configuration not found",
-          severity: "error",
-        });
-      }
-      break;
-
-    case "bastion":
-      if (normalized.bastion) {
-        validateBastion(normalized.bastion, context, result, infrastructureTier);
-        validateAllSecrets(normalized.bastion, "bastion", "", platformDir, envVars, result);
-      } else {
-        result.errors.push({
-          layer: "platform",
-          field: "bastion",
-          message: "Bastion configuration not found",
-          severity: "error",
-        });
+        addError(result, "platform", "networking", "Networking configuration not found", "error");
       }
       break;
 
     case "compute":
       if (normalized.compute) {
-        validateCompute(normalized.compute, context, result, infrastructureTier);
+        validateCompute(normalized.compute, context, result, tier);
         validateAllSecrets(normalized.compute, "compute", "", platformDir, envVars, result);
       } else {
-        result.errors.push({
-          layer: "platform",
-          field: "compute",
-          message: "Compute configuration not found",
-          severity: "error",
-        });
+        addError(result, "platform", "compute", "Compute configuration not found", "error");
+      }
+      break;
+
+    case "database":
+      if (normalized.database) {
+        validateDatabases(normalized.database, context, result, tier);
+        validateAllSecrets(normalized.database, "database", "", platformDir, envVars, result);
+      } else {
+        addError(result, "platform", "database", "Database configuration not found", "error");
       }
       break;
 
     case "cluster":
-      if (normalized.cluster) {
-        validateCluster(normalized.cluster, context, result, infrastructureTier);
-        validateAllSecrets(normalized.cluster, "cluster", "", platformDir, envVars, result);
+      if (normalized.k8s) {
+        validateCluster(normalized.k8s, context, result, tier);
+        validateAllSecrets(normalized.k8s, "cluster", "", platformDir, envVars, result);
       } else {
-        result.errors.push({
-          layer: "platform",
-          field: "cluster",
-          message: "Cluster configuration not found",
-          severity: "error",
-        });
-      }
-      break;
-
-    case "feature":
-      if (normalized.features) {
-        validateFeature(normalized.features, context, result, infrastructureTier);
-        validateAllSecrets(normalized.features, "features", "", platformDir, envVars, result);
-      } else {
-        result.errors.push({
-          layer: "platform",
-          field: "features",
-          message: "Features configuration not found",
-          severity: "error",
-        });
+        addError(result, "platform", "cluster", "Cluster configuration not found", "error");
       }
       break;
 
@@ -436,31 +293,48 @@ function validateSpecificLayer(
         field: "layer",
         message: `Unknown layer: ${layer}`,
         severity: "error",
-        suggestion: "Valid layers: datacenter, compute, cluster, feature, firewall, bastion, iam",
+        suggestion: "Valid layers: datacenter, networking, compute, database, cluster",
       });
   }
 }
 
 /**
- * Validates that configured environments have corresponding .env files
+ * Generates execution plan
  */
-function validateEnvironments(
-  platform: Platform,
+function generateExecutionPlan(
+  options: ValidateOptions,
+  normalized: NormalizedInfrastructure,
   platformDir: string,
   result: ValidationResult
 ): void {
-  if (!platform.environment) return;
+  try {
+    const existingPlan = options.planOutputPath ? loadPlan(options.planOutputPath) : null;
+    const plan = generatePlan(normalized, existingPlan || undefined);
+    plan.validation_passed = true;
 
-  const envFile = path.join(platformDir, `.env.${platform.environment}`);
-  const fallbackEnvFile = path.join(platformDir, `.env`);
+    const planPath = options.planOutputPath || path.join(platformDir, ".soverstack", "plan.yaml");
+    const planDir = path.dirname(planPath);
 
-  if (!fs.existsSync(envFile) && !fs.existsSync(fallbackEnvFile)) {
+    if (!fs.existsSync(planDir)) {
+      fs.mkdirSync(planDir, { recursive: true });
+    }
+
+    savePlan(plan, planPath);
+
     addWarning(
       result,
       "platform",
-      "environment",
-      `Environment "${platform.environment}" configured but no .env.${platform.environment} or .env file found`,
-      `Create .env.${platform.environment} file with required environment variables`
+      "plan",
+      `Execution plan generated: ${planPath}`,
+      `Plan contains ${plan.summary.to_create} resources to create, ${plan.summary.to_update} to update, ${plan.summary.to_delete} to delete`
+    );
+  } catch (error) {
+    addWarning(
+      result,
+      "platform",
+      "plan",
+      `Failed to generate execution plan: ${(error as Error).message}`,
+      "Validation passed but plan generation failed"
     );
   }
 }

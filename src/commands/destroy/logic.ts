@@ -87,7 +87,7 @@ export async function destroyInfrastructure(options: DestroyOptions): Promise<bo
   // Step 4: Load environment variables
   spinner.start("Loading environment variables...");
 
-  const envVars = loadEnvVariables(platformDir, platform.environment);
+  const envVars = loadEnvVariables(platformDir);
 
   spinner.succeed(`Loaded ${envVars.size} environment variables`);
 

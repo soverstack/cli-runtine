@@ -1,0 +1,44 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# USER DATABASES - Your custom database clusters
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Add your application database clusters here.
+# Core infrastructure databases are defined in core-databases.yaml (auto-generated).
+#
+# Documentation: https://docs.soverstack.io/databases
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+clusters:
+  # Example: Application database cluster
+  # - name: app-cluster            # Unique cluster identifier (required)
+  #   type: postgresql
+  #   version: "16"
+  #
+  #   cluster:
+  #     name: pg-apps              # Patroni cluster name
+  #     ha: true
+  #     vm_ids: [260, 261, 262]    # Use different VMs from core-infrastructure
+  #
+  #   port: 5432
+  #   ssl: required
+  #
+  #   databases:
+  #     - name: myapp
+  #       owner: myapp_user
+  #
+  #     - name: another_app
+  #       owner: another_user
+  #
+  #   credentials:
+  #     type: vault
+  #     path: secret/data/postgres/apps
+  #
+  #   backup:
+  #     storage_backend: s3-backup
+  #     schedule: "0 3 * * *"
+  #     retention:
+  #       daily: 7
+  #       weekly: 4
+  #       monthly: 6
+  #     type: pg_dumpall

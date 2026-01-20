@@ -2,31 +2,30 @@ import fs from "fs";
 import path from "path";
 import { InitOptions } from "./index";
 
-export function createObservabilityFile(options: InitOptions, environment?: string): void {
-  const projectPath = path.resolve(process.cwd(), options.projectName);
-  const observabilityDir = path.join(projectPath, "layers", "observability");
+export function createObservabilityFile(options: InitOptions): void {
+  const targetDir = options.outputDir || path.resolve(process.cwd(), options.projectName);
+  const filePath = path.join(targetDir, "observability.yaml");
 
-  // Create directory if it doesn't exist
-  if (!fs.existsSync(observabilityDir)) {
-    fs.mkdirSync(observabilityDir, { recursive: true });
-  }
-
-  const filename = environment ? `observability-${environment}.yaml` : "observability.yaml";
-  const filePath = path.join(observabilityDir, filename);
-
-  const content = generateObservabilityContent(options, environment);
+  const content = generateObservabilityContent(options);
 
   fs.writeFileSync(filePath, content, "utf-8");
 }
 
-function generateObservabilityContent(options: InitOptions, environment?: string): string {
+function generateObservabilityContent(options: InitOptions): string {
   const tier = options.infrastructureTier || "production";
-  const envSuffix = environment ? `_${environment.toUpperCase()}` : "";
+  const complianceLevel = options.complianceLevel || "startup";
+  const envSuffix = "";
 
   // Adjust configuration based on infrastructure tier
   const isLocal = tier === "local";
   const isProduction = tier === "production";
   const isEnterprise = tier === "enterprise";
+
+  // Adjust based on compliance level
+  const isComplianceStartup = complianceLevel === "startup";
+  const isComplianceBusiness = complianceLevel === "business";
+  const isComplianceEnterprise = complianceLevel === "enterprise";
+  const isComplianceRegulated = complianceLevel === "regulated";
 
   return `# ═══════════════════════════════════════════════════════════════════════════
 # OBSERVABILITY LAYER - Monitoring, Audit & Compliance
@@ -76,7 +75,7 @@ monitoring:
     admin_password_env_var: "GRAFANA_ADMIN_PASSWORD${envSuffix}"
     # admin_password_vault_path: "secret/observability/grafana/admin_password"
 
-    sub_domain: "grafana${environment ? `-${environment}` : ""}.example.com"
+    sub_domain: "grafana.example.com"
     accessible_outside_vpn: ${isLocal || !isProduction} # Only local/dev accessible outside VPN
 
     # Pre-configured dashboards
@@ -186,41 +185,50 @@ audit:
 # ─────────────────────────────────────────────────────────────────────────
 # COMPLIANCE STACK (Wazuh + OpenSCAP)
 # ─────────────────────────────────────────────────────────────────────────
+# Security level determines which protections are enabled automatically.
+# No need to enable everything - choose what fits your needs.
+#
+# Levels:
+# - essential: Side project, prototype - basic monitoring
+# - standard:  SMB, SaaS - audit logs, MFA, encrypted backups
+# - advanced:  Large company - SIEM, bastion, intrusion detection
+# - regulated: Bank, Healthcare - 1 year logs, dual approval, 24/7 monitoring
+#
 compliance:
-  enabled: ${isEnterprise} # Enterprise-grade compliance
+  level: "${complianceLevel}"
+
+  enabled: ${isComplianceEnterprise || isComplianceRegulated}
 
   wazuh:
-    enabled: ${isEnterprise}
+    enabled: ${isComplianceEnterprise || isComplianceRegulated}
 
     # Wazuh manager
-    ${isEnterprise ? `manager_vm_id: 4002 # Dedicated VM for Wazuh manager` : "# manager_vm_id: 4002"}
-    # manager_host: "wazuh-manager.example.com" # If external
+    ${isComplianceEnterprise || isComplianceRegulated ? `manager_vm_id: 4002` : "# manager_vm_id: 4002"}
 
     # Agent groups
     agent_groups:
       - "kubernetes"
-      - "${environment || "production"}"
+      - "production"
 
-    # Compliance frameworks
+    # Compliance rules (enabled based on level)
     rules:
-      pci_dss: ${isEnterprise} # Credit card compliance
-      gdpr: ${isProduction || isEnterprise} # EU data protection
-      hipaa: false # Healthcare (enable if needed)
-      nist_800_53: ${isEnterprise} # US government
-      cis: true # CIS benchmarks
-      tsc: ${isEnterprise} # SOC 2
-      iso_27001: ${isEnterprise} # ISO 27001
+      pci_dss: ${isComplianceRegulated}
+      gdpr: ${isComplianceBusiness || isComplianceEnterprise || isComplianceRegulated}
+      hipaa: ${isComplianceRegulated}
+      cis: ${isComplianceBusiness || isComplianceEnterprise || isComplianceRegulated}
+      tsc: ${isComplianceEnterprise || isComplianceRegulated}
+      iso_27001: ${isComplianceEnterprise || isComplianceRegulated}
 
     # Security modules
-    vulnerability_detection: true # CVE scanning
-    file_integrity_monitoring: true # FIM
-    security_configuration_assessment: true # SCA
-    docker_monitoring: ${!isLocal}
-    cloud_security_monitoring: ${isEnterprise}
+    vulnerability_detection: ${isComplianceBusiness || isComplianceEnterprise || isComplianceRegulated}
+    file_integrity_monitoring: ${isComplianceEnterprise || isComplianceRegulated}
+    security_configuration_assessment: ${isComplianceBusiness || isComplianceEnterprise || isComplianceRegulated}
+    docker_monitoring: ${!isLocal && !isComplianceStartup}
+    cloud_security_monitoring: ${isComplianceEnterprise || isComplianceRegulated}
 
     # Alerts
-    alert_level: ${isLocal ? 7 : isProduction ? 5 : 3} # 0-15 (lower = more alerts)
-    email_alerts: ${isProduction || isEnterprise}
+    alert_level: ${isComplianceStartup ? 7 : isComplianceBusiness ? 5 : 3}
+    email_alerts: ${isComplianceBusiness || isComplianceEnterprise || isComplianceRegulated}
     email_to: "security@example.com"
 
     # Integration
@@ -228,32 +236,31 @@ compliance:
     integrate_with_prometheus: true
 
   openscap:
-    enabled: ${isEnterprise}
+    enabled: ${isComplianceEnterprise || isComplianceRegulated}
 
-    # Scan schedule
+    # Scan frequency
     scan_schedule: "0 2 * * 0" # Weekly: Sunday at 2 AM
 
     # SCAP profiles
     profiles:
-      - "pci-dss"
       - "cis"
-      ${isEnterprise ? `- "stig"` : "# - \"stig\""}
+      ${isComplianceRegulated ? `- "pci-dss"\n      - "stig"` : "# - \"pci-dss\" # Enable if needed"}
 
     # Remediation
     remediation: false # ⚠️ Test in non-prod first!
-    remediation_dry_run: true # Generate scripts without applying
+    remediation_dry_run: true
 
-    # Reporting
+    # Reports
     report_storage: "/var/lib/scap/reports"
-    report_format: "all" # html | xml | json | all
+    report_format: "all"
 
     # Thresholds
-    fail_on_severity: "${isLocal ? "critical" : "high"}"
+    fail_on_severity: "${isComplianceStartup ? "critical" : "high"}"
 
   # Compliance reports
   compliance_reports:
-    enabled: ${isEnterprise}
-    schedule: "0 9 1 * *" # Monthly: 1st day at 9 AM
+    enabled: ${isComplianceEnterprise || isComplianceRegulated}
+    schedule: "0 9 1 * *" # Monthly: 1st of month at 9 AM
     recipients:
       - "compliance@example.com"
       - "security@example.com"

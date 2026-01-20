@@ -1,0 +1,66 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# NETWORKING - Public IP, DNS, VPN, Firewall
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Network configuration for Soverstack platform.
+# VM IDs reference VMs defined in compute/core-compute.yaml
+#
+# Documentation: https://docs.soverstack.io/networking
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUBLIC IP BLOCK
+# ─────────────────────────────────────────────────────────────────────────────
+public_ip:
+  type: allocated_block
+  cidr: "203.0.113.0/28"       # Replace with your public IP block
+  gateway: "203.0.113.1"
+  allocation:
+    firewall: "203.0.113.2"
+    vpn: "203.0.113.3"
+    ingress: "203.0.113.4"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FIREWALL (VyOS)
+# ─────────────────────────────────────────────────────────────────────────────
+firewall:
+  enabled: true
+  type: vyos
+  deployment: vm
+  vm_ids: [1, 2]              # VyOS VMs from core-compute.yaml
+  public_ip:
+    ip: "203.0.113.2"
+  domain: firewall.example.com
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VPN (Headscale)
+# ─────────────────────────────────────────────────────────────────────────────
+vpn:
+  enabled: true
+  type: headscale
+  deployment: vm
+  vm_ids: [100, 101]          # Headscale VMs from core-compute.yaml
+  public_ip:
+    ip: "203.0.113.3"
+  database: headscale         # Database from core-databases.yaml
+  vpn_subnet: "100.64.0.0/10"
+  oidc_enforced: true         # ALWAYS true - cannot be disabled
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DNS (PowerDNS + dnsdist)
+# ─────────────────────────────────────────────────────────────────────────────
+dns:
+  type: powerdns
+  deployment: vm
+
+  powerdns:
+    vm_ids: [70, 71]          # PowerDNS VMs from core-compute.yaml
+    loadbalancer_vm_ids: [50, 51]  # dnsdist VMs from core-compute.yaml
+    database: powerdns        # Database from core-databases.yaml
+
+  zones:
+    - name: example.com
+      type: primary
+    - name: internal.example.com
+      type: primary

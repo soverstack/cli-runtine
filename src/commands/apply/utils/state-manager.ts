@@ -10,17 +10,17 @@ export interface InfrastructureState {
   version: string;
   updated_at: string;
   infrastructure_tier: "local" | "production" | "enterprise";
-  environment?: string;
 
   // Checksums for change detection
   checksums: {
     platform: string;
     datacenter: string;
-    firewall?: string;
-    bastion?: string;
+    networking?: string;
+    security?: string;
     compute?: string;
-    cluster?: string;
-    features?: string;
+    database?: string;
+    k8s?: string;
+    apps?: string;
   };
 
   // Resource states (WITHOUT credentials/passwords/keys)
@@ -445,23 +445,22 @@ export class StateManager {
    */
   createInitialState(
     plan: any,
-    infrastructure_tier: string,
-    environment?: string
+    infrastructure_tier: string
   ): InfrastructureState {
     return {
       version: "1.0.0",
       updated_at: new Date().toISOString(),
       infrastructure_tier: infrastructure_tier as any,
-      environment,
 
       checksums: {
         platform: this.generateChecksum(plan),
         datacenter: "",
-        firewall: "",
-        bastion: "",
+        networking: "",
+        security: "",
         compute: "",
-        cluster: "",
-        features: "",
+        database: "",
+        k8s: "",
+        apps: "",
       },
 
       resources: [],

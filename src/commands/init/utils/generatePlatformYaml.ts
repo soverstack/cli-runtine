@@ -1,129 +1,99 @@
-import { InitOptions } from "../utils";
+import { InitOptions } from "./index";
 import fs from "fs";
-import ora from "ora";
 import path from "path";
+import { isMultiDcFunc } from "../logic";
 
-export const generatePlatformYaml = async ({
+export const generatePlatformYaml = ({
   projectName,
-  environments,
-  mode,
+  domain,
   infrastructureTier,
-}: InitOptions): Promise<void> => {
-  const spinner = ora("Generating platform.yaml").start();
-  const projectPath = path.resolve(process.cwd(), projectName);
+  outputDir,
+  datacenters,
+}: InitOptions): void => {
+  const tier = infrastructureTier || "production";
+  const finalDomain = domain || "example.com";
+  const targetDir = outputDir || path.resolve(process.cwd(), projectName);
+  const filePath = path.join(targetDir, "platform.yaml");
 
-  try {
-    const hasEnv = environments && environments.length > 0;
+  const isMultiDc = isMultiDcFunc(datacenters);
 
-    if (!hasEnv) {
-      const filePath = path.join(projectPath, "platform.yaml");
-      const content = getContentPerEnv({ projectName, mode, infrastructureTier });
-      fs.writeFileSync(filePath, content);
-    } else {
-      environments!.forEach((env) => {
-        const filePath = path.join(projectPath, `platform-${env}.yaml`);
-        const content = getContentPerEnv({ projectName, mode, infrastructureTier, env });
-        fs.writeFileSync(filePath, content);
-      });
-    }
+  const content = isMultiDc
+    ? generateMultiDcPlatformYaml(projectName, tier, finalDomain, datacenters!)
+    : generateSingleDcPlatformYaml(projectName, tier, finalDomain);
 
-    spinner.succeed("platform.yaml generated");
-    spinner.succeed(".env created");
-    spinner.succeed("ssh config created");
-  } catch (error) {
-    spinner.fail("Failed to generate platform.yaml");
-    throw error;
-  }
+  fs.writeFileSync(filePath, content);
 };
 
-const getContentPerEnv = ({
-  mode,
-  projectName,
-  infrastructureTier,
-  env,
-}: InitOptions & { env?: string }): string => {
-  const hasEnv = !!env;
-  const tier = infrastructureTier || "production";
-
-  let content = `# Soverstack Platform Configuration
-# Version: 1.0.0
-
+/**
+ * Single DC: all layers in same directory
+ */
+const generateSingleDcPlatformYaml = (projectName: string, tier: string, domain: string): string => {
+  return `# ============================================================
+# SOVERSTACK PLATFORM CONFIGURATION
+# ============================================================
 version: "1.0.0"
 project_name: "${projectName}"
-
-# ============================================================
-# INFRASTRUCTURE TIER
-# ============================================================
-# Determines validation requirements and network topology:
-# - local: Single node, HA optional, single bridge (vmbr0)
-# - production: 3+ servers, HA enforced, 3 networks
-# - enterprise: 3+ servers, HA enforced, 5 networks (full isolation)
+domain: "${domain}"
 infrastructure_tier: "${tier}"
 
-`;
-
-  if (hasEnv) {
-    content += `# Environment-specific configuration
-environment: "${env}"
-`;
-  }
-
-  if (mode === "advanced") {
-    content += `# Layer-based architecture
+# LAYERS - All paths relative to this file
+# Multi-file merge: use comma-separated paths (e.g., "file1.yaml, file2.yaml")
 layers:
-`;
-    if (hasEnv) {
-      content += `  datacenter: "./layers/datacenters/dc-${env}.yaml"
-  compute: "./layers/computes/compute-${env}.yaml"
-  bastion: "./layers/bastions/bastion-${env}.yaml"
-  firewall: "./layers/features/firewall-${env}.yaml"
-  iam: "./layers/iam/iam-${env}.yaml"
-  cluster: "./layers/clusters/k8s-${env}.yaml"
-  features: "./layers/features/features-${env}.yaml"
-  observability: "./layers/observability/observability-${env}.yaml"
-`;
-    } else {
-      content += `  datacenter: "./layers/datacenters/datacenter.yaml"
-  compute: "./layers/computes/compute.yaml"
-  bastion: "./layers/bastions/bastion.yaml"
-  firewall: "./layers/firewalls/firewall.yaml"
-  iam: "./layers/iam/iam.yaml"
-  cluster: "./layers/clusters/k8s.yaml"
-  features: "./layers/features/features.yaml"
-  observability: "./layers/observability/observability.yaml"
-`;
-    }
-  } else {
-    content += `# Simple mode - single file per environment
-`;
-    if (hasEnv) {
-      content += `layers:
-    infrastructure: "./layers/infrastructure-${env}.yaml"
-    iam: "./layers/iam/iam-${env}.yaml"
-    observability: "./layers/observability/observability-${env}.yaml"
-    environment: "${env}"
-`;
-    } else {
-      content += `layers:
-    infrastructure: "./layers/infrastructure.yaml"
-    iam: "./layers/iam/iam.yaml"
-    observability: "./layers/observability/observability.yaml"
-`;
-    }
-  }
+  datacenter: "./datacenter.yaml"
+  compute: "./core-compute.yaml, ./compute.yaml"       # Core VMs + your VMs
+  database: "./core-database.yaml, ./database.yaml"    # Core DBs + your DBs
+  networking: "./networking.yaml"
+  security: "./security.yaml"
+  observability: "./observability.yaml"
 
-  content += `
-# SSH configuration
 ssh: "./ssh_config.yaml"
 
-# State management
-# ############################################################
-# Documentation: https://docs.soverstack.io/configuration/state-management
-# ############################################################
-state: 
-  backend: "local" # local, s3, gcs, azure
-  path: "./.soverstack${hasEnv ? `/${env}/state` : "/state"}"
+state:
+  backend: "local"
+  path: "./.soverstack/state"
 `;
+};
 
-  return content;
+/**
+ * Multi-DC: full datacenter configs with explicit paths
+ */
+const generateMultiDcPlatformYaml = (
+  projectName: string,
+  tier: string,
+  domain: string,
+  datacenters: string[]
+): string => {
+  const dcList = datacenters
+    .map((dc, i) => {
+      const primary = i === 0 ? "\n    primary: true" : "";
+      const p = `./datacenters/${dc}`;
+      return `  - name: ${dc}${primary}
+    layers:
+      datacenter: "${p}/datacenter.yaml"
+      compute: "${p}/core-compute.yaml, ${p}/compute.yaml"
+      database: "${p}/core-database.yaml, ${p}/database.yaml"
+      networking: "${p}/networking.yaml"
+      security: "${p}/security.yaml"
+      observability: "${p}/observability.yaml"
+    ssh: "${p}/ssh_config.yaml"`;
+    })
+    .join("\n\n");
+
+  return `# ============================================================
+# SOVERSTACK PLATFORM CONFIGURATION - MULTI-DATACENTER
+# ============================================================
+version: "1.0.0"
+project_name: "${projectName}"
+domain: "${domain}"
+infrastructure_tier: "${tier}"
+
+# DATACENTERS
+# All paths are explicit - no magic
+datacenters:
+${dcList}
+
+state:
+  backend: "local"
+  path: "./.soverstack"
+`;
 };

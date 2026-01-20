@@ -1,34 +1,60 @@
-import { InitOptions } from "../utils";
+import { InitOptions } from "./index";
 import fs from "fs";
 import path from "path";
 
-export const createComputeFile = ({ projectName }: InitOptions, env?: string): void => {
-  const fileName = env ? `compute-${env}.yaml` : "compute.yaml";
-  const projectPath = path.resolve(process.cwd(), projectName);
+export const createComputeFile = ({ projectName, outputDir }: InitOptions): void => {
+  const targetDir = outputDir || path.resolve(process.cwd(), projectName);
+  const filePath = path.join(targetDir, "compute.yaml");
 
-  const filePath = path.join(projectPath, "layers/computes", fileName);
-
-  const content = `# ############################################################
-# 💻 COMPUTE RESOURCE CONFIGURATION ${env ? `- ${env.toUpperCase()}` : ""}
-# ############################################################
-# Documentation: https://docs.soverstack.io/configuration/computes
+  const content = `# ============================================================
+# APPLICATION COMPUTE CONFIGURATION
+# ============================================================
 #
-# RESERVED ID RANGES:
-# - 100-199: Networking & Firewalls (VyOS/OPNsense)
-# - 200-299: Bastion & Management (Headscale)
-# - 300-399: Load Balancers (HAProxy)
-# - 400-499: CI/CD Runners & Misc
-# - 500-599: k8s Control Plane (Masters)
-# - 600+: k8s Data Plane (Workers)
-# ############################################################
+# Your application VMs go here.
+# Infrastructure VMs are in core-compute.yaml (auto-generated).
+#
+# Documentation: https://docs.soverstack.io/layers/compute
+#
+# VM ID RANGES FOR APPLICATIONS:
+# - 400-499: K8s Load Balancers (HAProxy)
+# - 500-599: K8s Control Plane (Masters)
+# - 600-3000: K8s Data Plane (Workers)
+# - 3001+: Custom application VMs
+#
+# ============================================================
 
-# Predefined compute flavors for consistency
+# ------------------------------------------------------------
+# INSTANCE TYPE DEFINITIONS
+# ------------------------------------------------------------
+# Define reusable VM templates for your applications
+#
 instance_type_definitions:
+  - name: "app-small"
+    cpu: 2
+    ram: 4096
+    disk: 50
+    disk_type: "distributed"
+    os_template: "ubuntu-24.04-cloudinit"
+
+  - name: "app-medium"
+    cpu: 4
+    ram: 8192
+    disk: 100
+    disk_type: "distributed"
+    os_template: "ubuntu-24.04-cloudinit"
+
+  - name: "app-large"
+    cpu: 8
+    ram: 16384
+    disk: 200
+    disk_type: "distributed"
+    os_template: "ubuntu-24.04-cloudinit"
+
   - name: "k8s-master-std"
     cpu: 4
     ram: 8192
     disk: 50
-    disk_type: "distributed" # Ceph/Replicated
+    disk_type: "distributed"
     os_template: "ubuntu-24.04-cloudinit"
 
   - name: "k8s-worker-large"
@@ -38,40 +64,46 @@ instance_type_definitions:
     disk_type: "distributed"
     os_template: "ubuntu-24.04-cloudinit"
 
-# Individual VM Instances
+# ------------------------------------------------------------
+# K8s NODES
+# ------------------------------------------------------------
+# Kubernetes nodes (referenced in k8s.yaml)
+#
 virtual_machines:
-  # --- CONTROL PLANE ---
+  # --- K8s CONTROL PLANE ---
   - name: "master-01"
     vm_id: 500
-    host: "proxmox-node-01"
+    host: "pve-01"
     type_definition: "k8s-master-std"
     role: "k8s_master"
-    # Note: Access via Headscale VPN only (No Public IP)
 
-  # --- DATA PLANE ---
+  # --- K8s DATA PLANE ---
   - name: "worker-01"
     vm_id: 600
-    host: "proxmox-node-02"
+    host: "pve-02"
     type_definition: "k8s-worker-large"
     role: "k8s_worker"
 
   - name: "worker-02"
     vm_id: 601
-    host: "proxmox-node-03"
+    host: "pve-03"
     type_definition: "k8s-worker-large"
     role: "k8s_worker"
 
-  # --- CI/CD RUNNERS ---
-  - name: "runner-01"
-    vm_id: 400
-    host: "proxmox-node-01"
-    cpu: 4
-    ram: 4096
-    disk: 40
-    disk_type: "local" # High speed local NVMe for builds
-    os_template: "ubuntu-24.04-cloudinit"
-    role: "ci_runner"
+  # --- YOUR APPLICATION VMs ---
+  # Add your custom VMs here (vm_id >= 3001)
+  #
+  # - name: "myapp-01"
+  #   vm_id: 3001
+  #   host: "pve-01"
+  #   type_definition: "app-medium"
+  #   role: "general_purpose"
 
+# ------------------------------------------------------------
+# LINUX CONTAINERS (LXC)
+# ------------------------------------------------------------
+# Optional: lightweight containers on Proxmox
+#
 linux_containers: []
 `;
   fs.writeFileSync(filePath, content);

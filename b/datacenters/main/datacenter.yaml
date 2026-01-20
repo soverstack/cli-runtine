@@ -1,0 +1,98 @@
+# ============================================================
+# DATACENTER CONFIGURATION - MAIN
+# ============================================================
+#
+# REQUIREMENTS: PRODUCTION/ENTERPRISE
+# - Minimum 3 server(s) for High Availability
+# - Odd number recommended for quorum
+# - Ceph requires 10 GbE networking
+#
+# ============================================================
+
+name: "main"
+location: ""  # e.g., "Paris, France"
+
+# ------------------------------------------------------------
+# SOVERSTACK RUNTIME
+# ------------------------------------------------------------
+# VM where Soverstack CLI runs Terraform/Ansible
+soverstack:
+  vm_id: 450            # VM ID in TOOLS range (450-469)
+
+
+# ------------------------------------------------------------
+# PROXMOX SERVERS (PVE Cluster)
+# ------------------------------------------------------------
+# ip: Public IP for SSH connection (from your hosting provider)
+servers:
+  - name: pve-main-01
+    id: 1
+    ip: ""            # Public IP (e.g., 51.210.xxx.xxx)
+    port: 22
+    password:
+      type: env
+      var_name: "ROOT_PASSWORD_PVE01"
+    os: proxmox
+    disk_encryption:
+      enabled: false
+      password:
+        type: env
+        var_name: "DISK_ENCRYPTION_PASSWORD"
+
+  # - name: pve-main-02
+  #   id: 2
+  #   ip: ""          # Public IP
+  #   port: 22
+  #   password:
+  #     type: env
+  #     var_name: "ROOT_PASSWORD_PVE02"
+  #   os: proxmox
+  #   disk_encryption:
+  #     enabled: false
+  #     password:
+  #       type: env
+  #       var_name: "DISK_ENCRYPTION_PASSWORD"
+
+  # - name: pve-main-03
+  #   id: 3
+  #   ip: ""          # Public IP
+  #   port: 22
+  #   password:
+  #     type: env
+  #     var_name: "ROOT_PASSWORD_PVE03"
+  #   os: proxmox
+  #   disk_encryption:
+  #     enabled: false
+  #     password:
+  #       type: env
+  #       var_name: "DISK_ENCRYPTION_PASSWORD"
+
+# ------------------------------------------------------------
+# BACKUP SERVERS (Outside PVE cluster)
+# ------------------------------------------------------------
+backup_servers:
+  - name: backup-main-01
+    id: 100
+    ip: ""            # Public IP for SSH connection
+    port: 22
+    password:
+      type: env
+      var_name: "ROOT_PASSWORD_BACKUP01"
+    os: debian
+    disk_encryption:
+      enabled: false
+      password:
+        type: env
+        var_name: "DISK_ENCRYPTION_PASSWORD"
+
+# ------------------------------------------------------------
+# STORAGE BACKENDS (Optional - for S3-compatible backup storage)
+# ------------------------------------------------------------
+# Uncomment when you have MinIO or other S3-compatible storage
+#
+# storage_backends:
+#   backup-main:
+#     server: backup-main-01
+#     type: s3
+#     endpoint: ""         # e.g., "10.0.30.1:9000"
+#     bucket_prefix: backups-main

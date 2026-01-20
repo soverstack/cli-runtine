@@ -1,19 +1,28 @@
 import { NormalizedInfrastructure } from "./normalizer";
+import {
+  Datacenter,
+  NetworkingConfig,
+  SecurityConfig,
+  ComputeConfig,
+  DatabasesLayer,
+  K8sCluster,
+  AppsConfig,
+} from "@/types";
 
 /**
  * Represents an infrastructure resource in the plan
  */
 export interface PlanResource {
-  id: string; // Unique identifier (e.g., "server.node1", "vm.k8s-master-1")
+  id: string;
   type: ResourceType;
-  layer: LayerType;
+  layer: PlanLayerType;
   action: ResourceAction;
-  data: any; // The actual resource configuration
-  dependencies: string[]; // IDs of resources this depends on
+  data: any;
+  dependencies: string[];
   metadata: {
     created_at?: string;
     updated_at?: string;
-    checksum?: string; // Hash of configuration for change detection
+    checksum?: string;
   };
 }
 
@@ -23,31 +32,36 @@ export interface PlanResource {
 export type ResourceType =
   // Datacenter layer
   | "proxmox_server"
+  | "backup_server"
+  | "storage_backend"
   | "ceph_server"
   | "network_bridge"
-  | "failover_ip"
-
-  // Firewall layer
+  // Networking layer
+  | "public_ip_config"
+  | "vrrp_failover"
   | "firewall_vm"
-  | "firewall_rule"
-
-  // Bastion layer
-  | "bastion_vm"
-  | "vpn_subnet"
-
+  | "vpn_server"
+  | "dns_zone"
+  | "powerdns_server"
+  // Security layer
+  | "vault_server"
+  | "sso_server"
   // Compute layer
   | "vm"
   | "lxc_container"
   | "instance_type"
-
-  // Cluster layer
+  // Database layer
+  | "database_cluster"
+  | "database"
+  // K8s layer
   | "k8s_master"
   | "k8s_worker"
   | "haproxy"
   | "k8s_network"
-
-  // Features layer
-  | "feature";
+  | "ingress_controller"
+  | "metallb_pool"
+  // Apps layer
+  | "app";
 
 /**
  * Actions to perform on resources
@@ -55,9 +69,16 @@ export type ResourceType =
 export type ResourceAction = "create" | "update" | "delete" | "no-op";
 
 /**
- * Layer types
+ * Layer types for plan
  */
-export type LayerType = "datacenter" | "firewall" | "bastion" | "compute" | "cluster" | "features";
+export type PlanLayerType =
+  | "datacenter"
+  | "networking"
+  | "security"
+  | "compute"
+  | "database"
+  | "k8s"
+  | "apps";
 
 /**
  * Complete infrastructure plan
@@ -66,19 +87,14 @@ export interface InfrastructurePlan {
   version: string;
   generated_at: string;
   infrastructure_tier: "local" | "production" | "enterprise";
-  environment?: string;
-
   resources: PlanResource[];
-
-  execution_order: string[][]; // Array of resource ID groups (parallel execution within group)
-
+  execution_order: string[][];
   summary: {
     to_create: number;
     to_update: number;
     to_delete: number;
     no_change: number;
   };
-
   validation_passed: boolean;
 }
 
@@ -96,27 +112,31 @@ export function generatePlan(
     resources.push(...generateDatacenterResources(normalized.datacenter));
   }
 
-  if (normalized.firewall) {
-    resources.push(...generateFirewallResources(normalized.firewall));
+  if (normalized.networking) {
+    resources.push(...generateNetworkingResources(normalized.networking));
   }
 
-  if (normalized.bastion) {
-    resources.push(...generateBastionResources(normalized.bastion));
+  if (normalized.security) {
+    resources.push(...generateSecurityResources(normalized.security));
   }
 
   if (normalized.compute) {
     resources.push(...generateComputeResources(normalized.compute));
   }
 
-  if (normalized.cluster) {
-    resources.push(...generateClusterResources(normalized.cluster));
+  if (normalized.database) {
+    resources.push(...generateDatabaseResources(normalized.database));
   }
 
-  if (normalized.features) {
-    resources.push(...generateFeatureResources(normalized.features));
+  if (normalized.k8s) {
+    resources.push(...generateK8sResources(normalized.k8s));
   }
 
-  // Determine actions (create/update/delete) by comparing with existing plan
+  if (normalized.apps) {
+    resources.push(...generateAppsResources(normalized.apps));
+  }
+
+  // Determine actions by comparing with existing plan
   const resourcesWithActions = determineActions(resources, existingPlan);
 
   // Calculate execution order based on dependencies
@@ -124,74 +144,170 @@ export function generatePlan(
 
   // Generate summary
   const summary = {
-    to_create: resourcesWithActions.filter(r => r.action === "create").length,
-    to_update: resourcesWithActions.filter(r => r.action === "update").length,
-    to_delete: resourcesWithActions.filter(r => r.action === "delete").length,
-    no_change: resourcesWithActions.filter(r => r.action === "no-op").length,
+    to_create: resourcesWithActions.filter((r) => r.action === "create").length,
+    to_update: resourcesWithActions.filter((r) => r.action === "update").length,
+    to_delete: resourcesWithActions.filter((r) => r.action === "delete").length,
+    no_change: resourcesWithActions.filter((r) => r.action === "no-op").length,
   };
 
   return {
     version: "1.0.0",
     generated_at: new Date().toISOString(),
     infrastructure_tier: normalized.project?.infrastructure_tier || "production",
-    environment: normalized.project?.environment,
     resources: resourcesWithActions,
     execution_order: executionOrder,
     summary,
-    validation_passed: true, // Set by validate command
+    validation_passed: true,
   };
 }
 
 /**
  * Generates datacenter layer resources
  */
-function generateDatacenterResources(datacenter: any): PlanResource[] {
+function generateDatacenterResources(datacenter: Datacenter): PlanResource[] {
   const resources: PlanResource[] = [];
 
   // Proxmox servers
-  datacenter.servers?.forEach((server: any, index: number) => {
+  datacenter.servers?.forEach((server) => {
     resources.push({
       id: `server.${server.name}`,
       type: "proxmox_server",
       layer: "datacenter",
-      action: "create", // Will be determined later
+      action: "create",
       data: server,
       dependencies: [],
-      metadata: {
-        checksum: generateChecksum(server),
-      },
+      metadata: { checksum: generateChecksum(server) },
     });
   });
 
-  // Ceph servers
-  if (datacenter.ceph?.enabled && datacenter.ceph.servers) {
-    datacenter.ceph.servers.forEach((serverName: string) => {
+  // Backup servers
+  datacenter.backup_servers?.forEach((server) => {
+    resources.push({
+      id: `backup.${server.name}`,
+      type: "backup_server",
+      layer: "datacenter",
+      action: "create",
+      data: server,
+      dependencies: [],
+      metadata: { checksum: generateChecksum(server) },
+    });
+  });
+
+  // Storage backends
+  if (datacenter.storage_backends) {
+    Object.entries(datacenter.storage_backends).forEach(([name, config]) => {
       resources.push({
-        id: `ceph.${serverName}`,
-        type: "ceph_server",
+        id: `storage.${name}`,
+        type: "storage_backend",
         layer: "datacenter",
         action: "create",
-        data: { server_name: serverName, ceph_config: datacenter.ceph },
-        dependencies: [`server.${serverName}`],
-        metadata: {
-          checksum: generateChecksum(datacenter.ceph),
-        },
+        data: { name, ...config },
+        dependencies: [`backup.${config.server}`],
+        metadata: { checksum: generateChecksum(config) },
       });
     });
   }
 
-  // Network configuration
-  if (datacenter.network) {
+  return resources;
+}
+
+/**
+ * Generates networking layer resources
+ */
+function generateNetworkingResources(networking: NetworkingConfig): PlanResource[] {
+  const resources: PlanResource[] = [];
+
+  // Public IP configuration
+  if (networking.public_ip) {
     resources.push({
-      id: `network.main`,
-      type: "network_bridge",
-      layer: "datacenter",
+      id: "public_ip.config",
+      type: "public_ip_config",
+      layer: "networking",
       action: "create",
-      data: datacenter.network,
+      data: networking.public_ip,
       dependencies: [],
-      metadata: {
-        checksum: generateChecksum(datacenter.network),
-      },
+      metadata: { checksum: generateChecksum(networking.public_ip) },
+    });
+
+    // VRRP failover
+    if (networking.public_ip.failover) {
+      resources.push({
+        id: "public_ip.failover",
+        type: "vrrp_failover",
+        layer: "networking",
+        action: "create",
+        data: networking.public_ip.failover,
+        dependencies: ["public_ip.config"],
+        metadata: { checksum: generateChecksum(networking.public_ip.failover) },
+      });
+    }
+  }
+
+  // Firewall VMs
+  if (networking.firewall?.enabled) {
+    networking.firewall.vm_ids?.forEach((vmId) => {
+      resources.push({
+        id: `firewall.vm-${vmId}`,
+        type: "firewall_vm",
+        layer: "networking",
+        action: "create",
+        data: {
+          vm_id: vmId,
+          type: networking.firewall!.type,
+          public_ip: networking.firewall!.public_ip,
+        },
+        dependencies: ["public_ip.config"],
+        metadata: { checksum: generateChecksum({ vmId, firewall: networking.firewall }) },
+      });
+    });
+  }
+
+  // VPN servers
+  if (networking.vpn?.enabled) {
+    networking.vpn.vm_ids?.forEach((vmId) => {
+      resources.push({
+        id: `vpn.server-${vmId}`,
+        type: "vpn_server",
+        layer: "networking",
+        action: "create",
+        data: {
+          vm_id: vmId,
+          type: networking.vpn!.type,
+          public_ip: networking.vpn!.public_ip,
+          vpn_subnet: networking.vpn!.vpn_subnet,
+        },
+        dependencies: ["public_ip.config"],
+        metadata: { checksum: generateChecksum({ vmId, vpn: networking.vpn }) },
+      });
+    });
+  }
+
+  // DNS zones
+  if (networking.dns) {
+    // PowerDNS servers
+    networking.dns.powerdns?.vm_ids?.forEach((vmId) => {
+      resources.push({
+        id: `dns.powerdns-${vmId}`,
+        type: "powerdns_server",
+        layer: "networking",
+        action: "create",
+        data: { vm_id: vmId, database: networking.dns!.powerdns?.database },
+        dependencies: [],
+        metadata: { checksum: generateChecksum({ vmId, dns: networking.dns!.powerdns }) },
+      });
+    });
+
+    // DNS zones
+    networking.dns.zones?.forEach((zone) => {
+      resources.push({
+        id: `dns.zone-${zone.domain}`,
+        type: "dns_zone",
+        layer: "networking",
+        action: "create",
+        data: zone,
+        dependencies: [],
+        metadata: { checksum: generateChecksum(zone) },
+      });
     });
   }
 
@@ -199,62 +315,36 @@ function generateDatacenterResources(datacenter: any): PlanResource[] {
 }
 
 /**
- * Generates firewall layer resources
+ * Generates security layer resources
  */
-function generateFirewallResources(firewall: any): PlanResource[] {
+function generateSecurityResources(security: SecurityConfig): PlanResource[] {
   const resources: PlanResource[] = [];
 
-  if (!firewall.enabled) return resources;
-
-  firewall.vm_configuration?.vm_ids?.forEach((vmId: number, index: number) => {
+  // Vault
+  if (security.vault?.enabled) {
     resources.push({
-      id: `firewall.vm-${vmId}`,
-      type: "firewall_vm",
-      layer: "firewall",
+      id: "security.vault",
+      type: "vault_server",
+      layer: "security",
       action: "create",
-      data: {
-        vm_id: vmId,
-        type: firewall.type,
-        public_ip: firewall.public_ip,
-        config: firewall.vm_configuration,
-      },
-      dependencies: ["network.main"],
-      metadata: {
-        checksum: generateChecksum({ vmId, firewall }),
-      },
+      data: security.vault,
+      dependencies: [],
+      metadata: { checksum: generateChecksum(security.vault) },
     });
-  });
+  }
 
-  return resources;
-}
-
-/**
- * Generates bastion layer resources
- */
-function generateBastionResources(bastion: any): PlanResource[] {
-  const resources: PlanResource[] = [];
-
-  if (!bastion.enabled) return resources;
-
-  bastion.vm_configuration?.vm_ids?.forEach((vmId: number, index: number) => {
+  // SSO
+  if (security.sso?.enabled) {
     resources.push({
-      id: `bastion.vm-${vmId}`,
-      type: "bastion_vm",
-      layer: "bastion",
+      id: `security.sso-${security.sso.type}`,
+      type: "sso_server",
+      layer: "security",
       action: "create",
-      data: {
-        vm_id: vmId,
-        type: bastion.type,
-        public_ip: bastion.public_ip,
-        config: bastion.vm_configuration,
-        vpn_subnet: bastion.vpn_subnet,
-      },
-      dependencies: ["network.main"],
-      metadata: {
-        checksum: generateChecksum({ vmId, bastion }),
-      },
+      data: security.sso,
+      dependencies: [],
+      metadata: { checksum: generateChecksum(security.sso) },
     });
-  });
+  }
 
   return resources;
 }
@@ -262,11 +352,11 @@ function generateBastionResources(bastion: any): PlanResource[] {
 /**
  * Generates compute layer resources
  */
-function generateComputeResources(compute: any): PlanResource[] {
+function generateComputeResources(compute: ComputeConfig): PlanResource[] {
   const resources: PlanResource[] = [];
 
   // Instance type definitions
-  compute.instance_type_definitions?.forEach((typeDef: any) => {
+  compute.instance_type_definitions?.forEach((typeDef) => {
     resources.push({
       id: `instance_type.${typeDef.name}`,
       type: "instance_type",
@@ -274,17 +364,13 @@ function generateComputeResources(compute: any): PlanResource[] {
       action: "create",
       data: typeDef,
       dependencies: [],
-      metadata: {
-        checksum: generateChecksum(typeDef),
-      },
+      metadata: { checksum: generateChecksum(typeDef) },
     });
   });
 
   // Virtual machines
-  compute.virtual_machines?.forEach((vm: any) => {
+  compute.virtual_machines?.forEach((vm) => {
     const dependencies = [`server.${vm.host}`];
-
-    // Add instance type dependency if using type definition
     if ("type_definition" in vm) {
       dependencies.push(`instance_type.${vm.type_definition}`);
     }
@@ -296,14 +382,12 @@ function generateComputeResources(compute: any): PlanResource[] {
       action: "create",
       data: vm,
       dependencies,
-      metadata: {
-        checksum: generateChecksum(vm),
-      },
+      metadata: { checksum: generateChecksum(vm) },
     });
   });
 
   // Linux containers
-  compute.linux_containers?.forEach((container: any) => {
+  compute.linux_containers?.forEach((container) => {
     resources.push({
       id: `lxc.${container.name}`,
       type: "lxc_container",
@@ -311,9 +395,7 @@ function generateComputeResources(compute: any): PlanResource[] {
       action: "create",
       data: container,
       dependencies: [`server.${container.host}`],
-      metadata: {
-        checksum: generateChecksum(container),
-      },
+      metadata: { checksum: generateChecksum(container) },
     });
   });
 
@@ -321,68 +403,121 @@ function generateComputeResources(compute: any): PlanResource[] {
 }
 
 /**
- * Generates cluster layer resources
+ * Generates database layer resources
  */
-function generateClusterResources(cluster: any): PlanResource[] {
+function generateDatabaseResources(database: DatabasesLayer): PlanResource[] {
+  const resources: PlanResource[] = [];
+
+  database.clusters?.forEach((cluster) => {
+    // Database cluster - use top-level name for resource ID
+    resources.push({
+      id: `db_cluster.${cluster.name}`,
+      type: "database_cluster",
+      layer: "database",
+      action: "create",
+      data: cluster,
+      dependencies: cluster.cluster.vm_ids.map((id) => `vm.postgres-${id}`),
+      metadata: { checksum: generateChecksum(cluster) },
+    });
+
+    // Individual databases
+    cluster.databases?.forEach((db) => {
+      resources.push({
+        id: `database.${cluster.name}.${db.name}`,
+        type: "database",
+        layer: "database",
+        action: "create",
+        data: db,
+        dependencies: [`db_cluster.${cluster.name}`],
+        metadata: { checksum: generateChecksum(db) },
+      });
+    });
+  });
+
+  return resources;
+}
+
+/**
+ * Generates K8s layer resources
+ */
+function generateK8sResources(k8s: K8sCluster): PlanResource[] {
   const resources: PlanResource[] = [];
 
   // Master nodes
-  cluster.master_nodes?.forEach((node: any) => {
+  k8s.master_nodes?.forEach((node) => {
     resources.push({
       id: `k8s_master.${node.name}`,
       type: "k8s_master",
-      layer: "cluster",
+      layer: "k8s",
       action: "create",
       data: node,
-      dependencies: [`vm.${node.name}`],
-      metadata: {
-        checksum: generateChecksum(node),
-      },
+      dependencies: [],
+      metadata: { checksum: generateChecksum(node) },
     });
   });
 
   // Worker nodes
-  cluster.worker_nodes?.forEach((node: any) => {
+  k8s.worker_nodes?.forEach((node) => {
     resources.push({
       id: `k8s_worker.${node.name}`,
       type: "k8s_worker",
-      layer: "cluster",
+      layer: "k8s",
       action: "create",
       data: node,
-      dependencies: [`vm.${node.name}`, ...cluster.master_nodes.map((m: any) => `k8s_master.${m.name}`)],
-      metadata: {
-        checksum: generateChecksum(node),
-      },
+      dependencies: k8s.master_nodes?.map((m) => `k8s_master.${m.name}`) || [],
+      metadata: { checksum: generateChecksum(node) },
     });
   });
 
   // HAProxy nodes
-  cluster.ha_proxy_nodes?.forEach((node: any) => {
+  k8s.ha_proxy_nodes?.forEach((node) => {
     resources.push({
       id: `haproxy.${node.name}`,
       type: "haproxy",
-      layer: "cluster",
+      layer: "k8s",
       action: "create",
       data: node,
-      dependencies: [`vm.${node.name}`],
-      metadata: {
-        checksum: generateChecksum(node),
-      },
+      dependencies: [],
+      metadata: { checksum: generateChecksum(node) },
     });
   });
 
   // K8s network
-  if (cluster.network) {
+  if (k8s.network) {
     resources.push({
-      id: `k8s_network.${cluster.name}`,
+      id: `k8s_network.${k8s.name}`,
       type: "k8s_network",
-      layer: "cluster",
+      layer: "k8s",
       action: "create",
-      data: cluster.network,
-      dependencies: cluster.master_nodes?.map((m: any) => `k8s_master.${m.name}`) || [],
-      metadata: {
-        checksum: generateChecksum(cluster.network),
-      },
+      data: k8s.network,
+      dependencies: k8s.master_nodes?.map((m) => `k8s_master.${m.name}`) || [],
+      metadata: { checksum: generateChecksum(k8s.network) },
+    });
+  }
+
+  // Ingress controller
+  if (k8s.ingress) {
+    resources.push({
+      id: `ingress.${k8s.name}`,
+      type: "ingress_controller",
+      layer: "k8s",
+      action: "create",
+      data: k8s.ingress,
+      dependencies: [`k8s_network.${k8s.name}`],
+      metadata: { checksum: generateChecksum(k8s.ingress) },
+    });
+  }
+
+  // MetalLB
+  if (k8s.metallb?.enabled) {
+    resources.push({
+      id: `metallb.${k8s.name}`,
+      type: "metallb_pool",
+      layer: "k8s",
+      action: "create",
+      data: k8s.metallb,
+      dependencies: [`k8s_network.${k8s.name}`],
+      metadata: { checksum: generateChecksum(k8s.metallb) },
     });
   }
 
@@ -390,24 +525,21 @@ function generateClusterResources(cluster: any): PlanResource[] {
 }
 
 /**
- * Generates features layer resources
+ * Generates apps layer resources
  */
-function generateFeatureResources(features: any): PlanResource[] {
+function generateAppsResources(apps: AppsConfig): PlanResource[] {
   const resources: PlanResource[] = [];
 
-  // Add feature resources (Traefik, SSO, etc.)
-  Object.entries(features).forEach(([featureName, featureConfig]: [string, any]) => {
-    if (featureConfig?.enabled) {
+  Object.entries(apps).forEach(([appName, appConfig]) => {
+    if (appConfig?.enabled) {
       resources.push({
-        id: `feature.${featureName}`,
-        type: "feature",
-        layer: "features",
+        id: `app.${appName}`,
+        type: "app",
+        layer: "apps",
         action: "create",
-        data: featureConfig,
-        dependencies: [], // Features typically depend on cluster being ready
-        metadata: {
-          checksum: generateChecksum(featureConfig),
-        },
+        data: appConfig,
+        dependencies: [],
+        metadata: { checksum: generateChecksum(appConfig) },
       });
     }
   });
@@ -423,37 +555,28 @@ function determineActions(
   existingPlan?: InfrastructurePlan
 ): PlanResource[] {
   if (!existingPlan) {
-    // No existing plan, all resources are new
-    return resources.map(r => ({ ...r, action: "create" as ResourceAction }));
+    return resources.map((r) => ({ ...r, action: "create" as ResourceAction }));
   }
 
-  const existingResources = new Map(
-    existingPlan.resources.map(r => [r.id, r])
-  );
-
+  const existingResources = new Map(existingPlan.resources.map((r) => [r.id, r]));
   const result: PlanResource[] = [];
 
-  // Check each resource
-  resources.forEach(resource => {
+  resources.forEach((resource) => {
     const existing = existingResources.get(resource.id);
 
     if (!existing) {
-      // New resource
       result.push({ ...resource, action: "create" });
     } else if (existing.metadata.checksum !== resource.metadata.checksum) {
-      // Resource changed
       result.push({ ...resource, action: "update" });
     } else {
-      // No change
       result.push({ ...resource, action: "no-op" });
     }
 
-    // Remove from existing map (for deletion detection)
     existingResources.delete(resource.id);
   });
 
-  // Remaining resources in existing plan should be deleted
-  existingResources.forEach(resource => {
+  // Remaining resources should be deleted
+  existingResources.forEach((resource) => {
     result.push({ ...resource, action: "delete" });
   });
 
@@ -462,19 +585,12 @@ function determineActions(
 
 /**
  * Calculates execution order based on resource dependencies
- * Returns array of groups where resources in each group can be executed in parallel
  */
 function calculateExecutionOrder(resources: PlanResource[]): string[][] {
   const order: string[][] = [];
-  const processed = new Set<string>();
-  const resourceMap = new Map(resources.map(r => [r.id, r]));
+  const resourceMap = new Map(resources.map((r) => [r.id, r]));
 
-  // Helper function to get execution level
   function getExecutionLevel(resourceId: string, visited = new Set<string>()): number {
-    if (processed.has(resourceId)) {
-      return -1; // Already processed
-    }
-
     if (visited.has(resourceId)) {
       throw new Error(`Circular dependency detected: ${Array.from(visited).join(" -> ")} -> ${resourceId}`);
     }
@@ -482,12 +598,10 @@ function calculateExecutionOrder(resources: PlanResource[]): string[][] {
     const resource = resourceMap.get(resourceId);
     if (!resource) return -1;
 
-    // Resource with no dependencies goes to level 0
     if (resource.dependencies.length === 0) {
       return 0;
     }
 
-    // Find max level of dependencies
     visited.add(resourceId);
     let maxDependencyLevel = -1;
 
@@ -502,15 +616,19 @@ function calculateExecutionOrder(resources: PlanResource[]): string[][] {
   // Calculate level for each resource
   const resourceLevels = new Map<string, number>();
 
-  resources.forEach(resource => {
+  resources.forEach((resource) => {
     if (resource.action !== "delete") {
-      const level = getExecutionLevel(resource.id);
-      resourceLevels.set(resource.id, level);
+      try {
+        const level = getExecutionLevel(resource.id);
+        resourceLevels.set(resource.id, level);
+      } catch {
+        resourceLevels.set(resource.id, 0);
+      }
     }
   });
 
   // Group resources by level
-  const maxLevel = Math.max(...Array.from(resourceLevels.values()));
+  const maxLevel = Math.max(0, ...Array.from(resourceLevels.values()));
 
   for (let level = 0; level <= maxLevel; level++) {
     const group = Array.from(resourceLevels.entries())
@@ -522,10 +640,8 @@ function calculateExecutionOrder(resources: PlanResource[]): string[][] {
     }
   }
 
-  // Handle deletions (reverse order)
-  const deletions = resources
-    .filter(r => r.action === "delete")
-    .map(r => r.id);
+  // Handle deletions (at the end)
+  const deletions = resources.filter((r) => r.action === "delete").map((r) => r.id);
 
   if (deletions.length > 0) {
     order.push(deletions);
@@ -539,7 +655,7 @@ function calculateExecutionOrder(resources: PlanResource[]): string[][] {
  */
 function generateChecksum(data: any): string {
   const crypto = require("crypto");
-  const jsonString = JSON.stringify(data, Object.keys(data).sort());
+  const jsonString = JSON.stringify(data, Object.keys(data || {}).sort());
   return crypto.createHash("sha256").update(jsonString).digest("hex");
 }
 
@@ -569,7 +685,7 @@ export function loadPlan(planPath: string): InfrastructurePlan | null {
   try {
     const content = fs.readFileSync(planPath, "utf8");
     return yaml.load(content) as InfrastructurePlan;
-  } catch (error) {
+  } catch {
     return null;
   }
 }

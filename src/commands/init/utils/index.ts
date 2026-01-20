@@ -1,46 +1,57 @@
-// how to import and export directly functions from other files
-
-import { createBastionFile } from "./createBastionFile";
-import { createFirewallFile } from "./createFirewallFile";
-import { createFeatureFile } from "./createFeatureFile";
-
-import { createClusterFile } from "./createClusterFile";
+// Layer file generators
+import { createK8sFile } from "./createK8sFile";
 import { createComputeFile } from "./createComputeFile";
+import { createCoreComputeFile } from "./createCoreComputeFile";
 import { createDatacenterFile } from "./createDatacenterFile";
+import { createDatabaseFile } from "./createDatabaseFile";
+import { createCoreDatabaseFile } from "./createCoreDatabaseFile";
+import { createNetworkingFile } from "./createNetworkingFile";
+import { createSecurityFile } from "./createSecurityFile";
+import { createObservabilityFile } from "./createObservabilityFile";
+import { createAppsFile } from "./createAppsFile";
+import { createOrchestratorFile } from "./createOrchestratorFile";
 
+// Utility generators
 import { createReadme } from "./createReadme";
 import { createGitignore } from "./createGitignore";
-import { createSimpleLayerFile } from "./createSimpleLayerFile";
 import { generatePlatformYaml } from "./generatePlatformYaml";
 import { generateSshKeys } from "./generateSshKeys";
 import { createSSHConfig } from "./createSSHConfig";
 import { createEnv } from "./createEnv";
-import { createObservabilityFile } from "./createObservabilityFile";
-import { createIAMFile } from "./createIAMFile";
+import { createEnvForDatacenter } from "./createEnvForDatacenter";
 
-import { InfrastructureTierType } from "@/types";
+import { InfrastructureTierType, ComplianceLevel } from "@/types";
+
 export {
-  createBastionFile,
-  createFirewallFile,
-  createFeatureFile,
-  createClusterFile,
+  // Layer files
+  createK8sFile,
   createComputeFile,
+  createCoreComputeFile,
   createDatacenterFile,
+  createDatabaseFile,
+  createCoreDatabaseFile,
+  createNetworkingFile,
+  createSecurityFile,
+  createObservabilityFile,
+  createAppsFile,
+  createOrchestratorFile,
+  // Utilities
   createReadme,
-  createSimpleLayerFile,
   createGitignore,
   generatePlatformYaml,
   generateSshKeys,
   createSSHConfig,
   createEnv,
-  createObservabilityFile,
-  createIAMFile,
+  createEnvForDatacenter,
 };
 
 export interface InitOptions {
   projectName: string;
-  environments?: string[]; // Optional: if undefined, no env-specific files
-  mode: "simple" | "advanced";
+  domain?: string;
+  datacenters?: string[];
   generateSshKeys?: boolean;
-  infrastructureTier?: InfrastructureTierType; // Infrastructure complexity tier
+  infrastructureTier?: InfrastructureTierType;
+  complianceLevel?: ComplianceLevel;
+  outputDir?: string;
+  currentDc?: string;
 }

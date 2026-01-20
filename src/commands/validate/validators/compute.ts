@@ -1,7 +1,13 @@
-import { ComputeConfig, InfrastructureTierType, VMBasedOnType, VMCustom } from "../../../types";
+import { ComputeConfig, InfrastructureTierType, VMBasedOnType, VMCustom, VMRole } from "../../../types";
 import { ValidationResult, ValidationContext, addError, addWarning } from "../utils/types";
 import { validateVmIdRange, validateVmIdUniqueness } from "../rules/vm-id-ranges";
 import { validateResourceConstraints } from "../rules/ha-requirements";
+import {
+  INFRASTRUCTURE_REQUIREMENTS,
+  VMRequirementKey,
+  getVMIdRangeForRole,
+  isVMIdValidForRole
+} from "../../../infrastructure-requirements";
 
 /**
  * Validates compute configuration
@@ -163,6 +169,18 @@ export function validateCompute(
       // Custom VM with explicit specs
       const vmCustom = vm as VMCustom;
 
+      // CRITICAL: Reject VMCustom in production/enterprise tiers
+      if (infrastructureTier !== "local") {
+        addError(
+          result,
+          layer,
+          `${vmField}`,
+          `VMCustom not allowed in ${infrastructureTier} tier - use instance_type_definitions`,
+          "critical",
+          `Define a type in instance_type_definitions and use type_definition property instead of inline cpu/ram/disk`
+        );
+      }
+
       if (!vmCustom.cpu || vmCustom.cpu <= 0) {
         addError(result, layer, `${vmField}.cpu`, "CPU must be > 0", "error");
       }
@@ -224,4 +242,184 @@ export function validateCompute(
       }
     });
   }
+
+  // =========================================================================
+  // INFRASTRUCTURE REQUIREMENTS VALIDATION
+  // =========================================================================
+  validateInfrastructureRequirements(compute, result, layer, infrastructureTier);
+}
+
+/**
+ * Validates that infrastructure meets the requirements for the tier
+ * - Checks mandatory VMs are present with minimum counts
+ * - Validates VM ID ranges match roles
+ * - Validates resource specs meet minimum requirements
+ */
+function validateInfrastructureRequirements(
+  compute: ComputeConfig,
+  result: ValidationResult,
+  layer: string,
+  tier: InfrastructureTierType
+): void {
+  const vms = compute.virtual_machines || [];
+  const typeDefs = compute.instance_type_definitions || [];
+
+  // Build a map of role -> count
+  const roleCountMap = new Map<string, number>();
+  vms.forEach((vm) => {
+    if (vm.role) {
+      roleCountMap.set(vm.role, (roleCountMap.get(vm.role) || 0) + 1);
+    }
+  });
+
+  // Check mandatory VMs by tier
+  for (const [vmKey, vmReq] of Object.entries(INFRASTRUCTURE_REQUIREMENTS.vms)) {
+    const minCount = vmReq.min_count[tier];
+    const currentCount = roleCountMap.get(vmReq.role) || 0;
+
+    if (minCount > 0 && currentCount < minCount) {
+      if (tier === "local") {
+        addWarning(
+          result,
+          layer,
+          `infrastructure.${vmKey}`,
+          `${tier} tier recommends at least ${minCount} ${vmKey} VM(s) (role: ${vmReq.role}), found ${currentCount}`,
+          `Add ${minCount - currentCount} more VM(s) with role "${vmReq.role}" for HA`
+        );
+      } else {
+        addError(
+          result,
+          layer,
+          `infrastructure.${vmKey}`,
+          `${tier} tier requires at least ${minCount} ${vmKey} VM(s) (role: ${vmReq.role}), found ${currentCount}`,
+          "critical",
+          `Add ${minCount - currentCount} more VM(s) with role "${vmReq.role}"`
+        );
+      }
+    }
+  }
+
+  // Validate each VM's ID is in the correct range for its role
+  vms.forEach((vm, index) => {
+    if (vm.vm_id && vm.role) {
+      if (!isVMIdValidForRole(vm.vm_id, vm.role)) {
+        const expectedRange = getVMIdRangeForRole(vm.role);
+        addError(
+          result,
+          layer,
+          `virtual_machines[${index}].vm_id`,
+          `VM ID ${vm.vm_id} is not in valid range for role "${vm.role}"`,
+          "error",
+          expectedRange
+            ? `Expected range: ${expectedRange.min}-${expectedRange.max}`
+            : `Unknown role "${vm.role}"`
+        );
+      }
+    }
+  });
+
+  // Validate resource specs for VMs match tier requirements
+  vms.forEach((vm, index) => {
+    if (!vm.role) return;
+
+    // Find the requirement for this role
+    const reqEntry = Object.entries(INFRASTRUCTURE_REQUIREMENTS.vms).find(
+      ([_, req]) => req.role === vm.role
+    );
+    if (!reqEntry) return;
+
+    const [vmKey, vmReq] = reqEntry;
+    const requiredSpecs = vmReq.specs[tier];
+
+    let actualCpu: number | undefined;
+    let actualRam: number | undefined;
+    let actualDisk: number | undefined;
+
+    if ("type_definition" in vm) {
+      // Get specs from type definition
+      const typeDef = typeDefs.find((t) => t.name === (vm as VMBasedOnType).type_definition);
+      if (typeDef) {
+        actualCpu = typeDef.cpu;
+        actualRam = typeDef.ram;
+        actualDisk = typeDef.disk;
+      }
+    } else {
+      // Custom VM specs
+      const vmCustom = vm as VMCustom;
+      actualCpu = vmCustom.cpu;
+      actualRam = vmCustom.ram;
+      actualDisk = vmCustom.disk;
+    }
+
+    if (actualCpu !== undefined && actualCpu < requiredSpecs.vcpu) {
+      addWarning(
+        result,
+        layer,
+        `virtual_machines[${index}].cpu`,
+        `VM "${vm.name}" has ${actualCpu} vCPU but ${tier} tier recommends ${requiredSpecs.vcpu} for ${vmKey}`,
+        `Consider increasing CPU to ${requiredSpecs.vcpu}`
+      );
+    }
+
+    if (actualRam !== undefined && actualRam < requiredSpecs.ram_gb) {
+      addWarning(
+        result,
+        layer,
+        `virtual_machines[${index}].ram`,
+        `VM "${vm.name}" has ${actualRam}GB RAM but ${tier} tier recommends ${requiredSpecs.ram_gb}GB for ${vmKey}`,
+        `Consider increasing RAM to ${requiredSpecs.ram_gb}GB`
+      );
+    }
+
+    if (actualDisk !== undefined && actualDisk < requiredSpecs.disk_gb) {
+      addWarning(
+        result,
+        layer,
+        `virtual_machines[${index}].disk`,
+        `VM "${vm.name}" has ${actualDisk}GB disk but ${tier} tier recommends ${requiredSpecs.disk_gb}GB for ${vmKey}`,
+        `Consider increasing disk to ${requiredSpecs.disk_gb}GB`
+      );
+    }
+  });
+
+  // Validate mandatory databases - these are required for core services
+  if (tier !== "local") {
+    validateMandatoryDatabases(vms, result, layer, tier);
+  }
+}
+
+/**
+ * Validates that mandatory databases are configured for core services
+ * Required databases: keycloak, headscale, powerdns, openbao
+ */
+function validateMandatoryDatabases(
+  vms: ComputeConfig["virtual_machines"],
+  result: ValidationResult,
+  layer: string,
+  tier: InfrastructureTierType
+): void {
+  // Check for PostgreSQL VMs (role: database)
+  const dbVMs = vms.filter((vm) => vm.role === "database");
+
+  if (dbVMs.length === 0) {
+    addError(
+      result,
+      layer,
+      "infrastructure.postgresql",
+      `${tier} tier requires at least one PostgreSQL VM for mandatory databases`,
+      "critical",
+      "Add VM(s) with role 'database' for PostgreSQL"
+    );
+    return;
+  }
+
+  // List mandatory databases for documentation/warning
+  const mandatoryDbs = INFRASTRUCTURE_REQUIREMENTS.mandatory_databases;
+  addWarning(
+    result,
+    layer,
+    "mandatory_databases",
+    `Ensure PostgreSQL VMs are configured with the following mandatory databases: ${mandatoryDbs.map((db) => db.name).join(", ")}`,
+    `These databases are required for: ${mandatoryDbs.map((db) => `${db.name} (${db.purpose})`).join("; ")}`
+  );
 }

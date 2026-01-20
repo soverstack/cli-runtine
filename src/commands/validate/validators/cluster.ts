@@ -169,13 +169,13 @@ export function validateCluster(
       if (!node.vm_id) {
         addError(result, layer, `${nodeField}.vm_id`, "VM ID is required", "error");
       } else {
-        // Validate VM ID range (300-399)
-        if (node.vm_id < 300 || node.vm_id > 399) {
+        // Validate VM ID range (400-449 for load balancers)
+        if (node.vm_id < 400 || node.vm_id > 449) {
           addError(
             result,
             layer,
             `${nodeField}.vm_id`,
-            `HAProxy VM ID ${node.vm_id} must be in range 300-399`,
+            `HAProxy VM ID ${node.vm_id} must be in range 400-449`,
             "error"
           );
         }
@@ -189,6 +189,92 @@ export function validateCluster(
       "No HAProxy nodes configured - single point of failure for Kubernetes API",
       "Add HAProxy nodes for load balancing and HA of the Kubernetes API server"
     );
+  }
+
+  // Validate ingress configuration
+  if (cluster.ingress) {
+    if (!["traefik", "nginx"].includes(cluster.ingress.type)) {
+      addError(
+        result,
+        layer,
+        "ingress.type",
+        `Invalid ingress type: ${cluster.ingress.type}`,
+        "error",
+        'Must be one of: "traefik", "nginx"'
+      );
+    }
+
+    // HA requirement for ingress replicas
+    if (infrastructureTier !== "local" && cluster.ingress.replicas < 2) {
+      addError(
+        result,
+        layer,
+        "ingress.replicas",
+        `Ingress requires at least 2 replicas for HA in ${infrastructureTier} tier`,
+        "error",
+        "Set replicas: 2 or higher for high availability"
+      );
+    } else if (cluster.ingress.replicas < 1) {
+      addError(result, layer, "ingress.replicas", "Ingress requires at least 1 replica", "error");
+    }
+  } else {
+    addWarning(
+      result,
+      layer,
+      "ingress",
+      "No ingress controller configured",
+      "Add ingress configuration to expose services externally"
+    );
+  }
+
+  // Validate public_ip configuration for ingress
+  if (cluster.public_ip) {
+    if (!cluster.public_ip.ip) {
+      addWarning(
+        result,
+        layer,
+        "public_ip.ip",
+        "Public IP not set for cluster ingress",
+        "Set a public IP from your allocated block for external access"
+      );
+    }
+
+    if (cluster.public_ip.vrrp_id !== undefined) {
+      if (cluster.public_ip.vrrp_id < 1 || cluster.public_ip.vrrp_id > 255) {
+        addError(
+          result,
+          layer,
+          "public_ip.vrrp_id",
+          `VRRP ID ${cluster.public_ip.vrrp_id} must be between 1 and 255`,
+          "error"
+        );
+      }
+    }
+  }
+
+  // Validate MetalLB configuration
+  if (cluster.metallb?.enabled) {
+    if (cluster.metallb.mode !== "layer2") {
+      addError(
+        result,
+        layer,
+        "metallb.mode",
+        `Invalid MetalLB mode: ${cluster.metallb.mode}`,
+        "error",
+        'Currently only "layer2" is supported'
+      );
+    }
+
+    if (!cluster.metallb.address_pool) {
+      addError(
+        result,
+        layer,
+        "metallb.address_pool",
+        "MetalLB address pool is required when enabled",
+        "error",
+        'Set address_pool to an IP range (e.g., "203.0.113.100-203.0.113.200")'
+      );
+    }
   }
 
   // Validate network configuration

@@ -1,74 +1,115 @@
 import { NormalizedInfrastructure } from "./normalizer";
+import { InfrastructureTierType } from "../../../types";
+import { HA_REQUIREMENTS } from "../../../constants";
 
 /**
  * Applies default values to infrastructure configuration
  *
- * SECURITY & HA DEFAULTS:
- * - Firewall enabled by default
- * - Bastion OIDC enforcement (security)
- * - Minimum HA requirements (3 nodes, odd numbers)
- * - Network defaults (pod_cidr, service_cidr, CNI)
- * - Auto-scaling defaults
+ * DEFAULTS BY TIER:
+ * - local: Relaxed defaults, single instances OK
+ * - production/enterprise: Strict HA defaults
  *
- * This ensures secure and highly available infrastructure even if user
- * doesn't explicitly configure certain options.
+ * SECURITY DEFAULTS (all tiers):
+ * - Firewall enabled by default
+ * - VPN OIDC always enforced
+ * - Services not accessible outside VPN by default
  */
 export function applyDefaults(infra: NormalizedInfrastructure): NormalizedInfrastructure {
   const normalized = { ...infra };
+  const tier = normalized.project?.infrastructure_tier || "production";
+  const haReqs = HA_REQUIREMENTS[tier];
 
   // ============================================================
-  // FIREWALL DEFAULTS
+  // PROJECT DEFAULTS
   // ============================================================
-  if (normalized.firewall) {
-    normalized.firewall = {
-      ...normalized.firewall,
-      enabled: normalized.firewall.enabled ?? true, // Enabled by default for security
-      type: normalized.firewall.type ?? "vyos",
+  if (!normalized.project) {
+    normalized.project = {
+      name: "soverstack-project",
+      domain: "example.com",
+      infrastructure_tier: "production",
+      version: "1.0.0",
     };
   }
 
   // ============================================================
-  // BASTION DEFAULTS
+  // NETWORKING DEFAULTS
   // ============================================================
-  if (normalized.bastion) {
-    normalized.bastion = {
-      ...normalized.bastion,
-      enabled: normalized.bastion.enabled ?? true,
-      type: normalized.bastion.type ?? "headscale",
-      oidc_enforced: true, // ALWAYS enforced for security - cannot be disabled
-      database_type: normalized.bastion.database_type ?? "postgres", // Postgres for HA
-      vpn_subnet: normalized.bastion.vpn_subnet ?? "100.64.0.0/10", // CGNAT range
-    };
-  }
-
-  // ============================================================
-  // DATACENTER DEFAULTS
-  // ============================================================
-  if (normalized.datacenter) {
-    // Network defaults
-    normalized.datacenter.network = {
-      type: normalized.datacenter.network?.type ?? "vswitch",
-      failover_subnet: normalized.datacenter.network?.failover_subnet,
-    };
-
-    // Cluster network defaults
-    if (normalized.datacenter.cluster) {
-      normalized.datacenter.cluster = {
-        private_network: normalized.datacenter.cluster.private_network ?? "10.0.10.0/24",
-        public_network: normalized.datacenter.cluster.public_network ?? "10.0.11.0/24",
+  if (normalized.networking) {
+    // Public IP defaults
+    if (normalized.networking.public_ip) {
+      normalized.networking.public_ip = {
+        ...normalized.networking.public_ip,
+        type: normalized.networking.public_ip.type ?? "allocated_block",
       };
     }
 
-    // Ceph defaults
-    if (normalized.datacenter.ceph) {
-      normalized.datacenter.ceph = {
-        enabled: normalized.datacenter.ceph.enabled ?? false,
-        servers:
-          normalized.datacenter.ceph.servers ??
-          normalized.datacenter.servers.flatMap((s) => (s.name ? [s.name] : [])) ??
-          [],
-        private_network: normalized.datacenter.ceph.private_network ?? "10.0.1.0/24",
-        public_network: normalized.datacenter.ceph.public_network ?? "10.0.2.0/24",
+    // DNS defaults
+    if (normalized.networking.dns) {
+      normalized.networking.dns = {
+        ...normalized.networking.dns,
+        type: normalized.networking.dns.type ?? "powerdns",
+        deployment: normalized.networking.dns.deployment ?? "vm",
+        zones: normalized.networking.dns.zones ?? [],
+      };
+    }
+
+    // VPN defaults
+    if (normalized.networking.vpn) {
+      normalized.networking.vpn = {
+        ...normalized.networking.vpn,
+        enabled: normalized.networking.vpn.enabled ?? true,
+        type: normalized.networking.vpn.type ?? "headscale",
+        deployment: "vm",
+        vm_ids: normalized.networking.vpn.vm_ids ?? [],
+        vpn_subnet: normalized.networking.vpn.vpn_subnet ?? "100.64.0.0/10",
+        oidc_enforced: true, // ALWAYS enforced - cannot be disabled
+      };
+    }
+
+    // Firewall defaults
+    if (normalized.networking.firewall) {
+      normalized.networking.firewall = {
+        ...normalized.networking.firewall,
+        enabled: normalized.networking.firewall.enabled ?? true,
+        type: normalized.networking.firewall.type ?? "vyos",
+        deployment: "vm",
+        vm_ids: normalized.networking.firewall.vm_ids ?? [],
+      };
+    }
+  }
+
+  // ============================================================
+  // SECURITY DEFAULTS
+  // ============================================================
+  if (normalized.security) {
+    // Vault defaults
+    if (normalized.security.vault) {
+      normalized.security.vault = {
+        ...normalized.security.vault,
+        enabled: normalized.security.vault.enabled ?? true,
+        deployment: normalized.security.vault.deployment ?? (tier === "local" ? "vm" : "cluster"),
+        storage: normalized.security.vault.storage ?? "postgresql",
+        accessible_outside_vpn: normalized.security.vault.accessible_outside_vpn ?? false,
+      };
+    }
+
+    // SSO defaults
+    if (normalized.security.sso) {
+      normalized.security.sso = {
+        ...normalized.security.sso,
+        enabled: normalized.security.sso.enabled ?? true,
+        type: normalized.security.sso.type ?? "keycloak",
+        deployment: normalized.security.sso.deployment ?? (tier === "local" ? "vm" : "cluster"),
+        accessible_outside_vpn: normalized.security.sso.accessible_outside_vpn ?? false,
+      };
+    }
+
+    // Cert Manager defaults
+    if (normalized.security.cert_manager) {
+      normalized.security.cert_manager = {
+        ...normalized.security.cert_manager,
+        enabled: normalized.security.cert_manager.enabled ?? true,
+        production: normalized.security.cert_manager.production ?? (tier !== "local"),
       };
     }
   }
@@ -77,125 +118,77 @@ export function applyDefaults(infra: NormalizedInfrastructure): NormalizedInfras
   // COMPUTE DEFAULTS
   // ============================================================
   if (normalized.compute) {
-    // Ensure arrays exist
-    normalized.compute.instance_type_definitions =
-      normalized.compute.instance_type_definitions ?? [];
-    normalized.compute.virtual_machines = normalized.compute.virtual_machines ?? [];
-    normalized.compute.linux_containers = normalized.compute.linux_containers ?? [];
+    normalized.compute = {
+      instance_type_definitions: normalized.compute.instance_type_definitions ?? [],
+      virtual_machines: normalized.compute.virtual_machines ?? [],
+      linux_containers: normalized.compute.linux_containers ?? [],
+    };
   }
 
   // ============================================================
-  // CLUSTER DEFAULTS
+  // K8S CLUSTER DEFAULTS
   // ============================================================
-  if (normalized.cluster) {
-    // Network defaults - CRITICAL for K8s
-    normalized.cluster.network = {
-      pod_cidr: normalized.cluster.network?.pod_cidr ?? "10.244.0.0/16",
-      service_cidr: normalized.cluster.network?.service_cidr ?? "10.96.0.0/12",
-      cni: normalized.cluster.network?.cni ?? "cilium", // Cilium by default for eBPF
+  if (normalized.k8s) {
+    // Network defaults
+    normalized.k8s.network = {
+      pod_cidr: normalized.k8s.network?.pod_cidr ?? "10.244.0.0/16",
+      service_cidr: normalized.k8s.network?.service_cidr ?? "10.96.0.0/12",
+      cni: normalized.k8s.network?.cni ?? "cilium",
       cilium_features:
-        normalized.cluster.network?.cni === "cilium"
+        (normalized.k8s.network?.cni ?? "cilium") === "cilium"
           ? {
-              ebpf_enabled: normalized.cluster.network?.cilium_features?.ebpf_enabled ?? true,
-              cluster_mesh: normalized.cluster.network?.cilium_features?.cluster_mesh ?? true, // For hybrid cloud
+              ebpf_enabled: normalized.k8s.network?.cilium_features?.ebpf_enabled ?? true,
+              cluster_mesh: normalized.k8s.network?.cilium_features?.cluster_mesh ?? false,
             }
           : undefined,
     };
 
+    // Ingress defaults
+    if (normalized.k8s.ingress) {
+      normalized.k8s.ingress = {
+        ...normalized.k8s.ingress,
+        type: normalized.k8s.ingress.type ?? "traefik",
+        replicas: normalized.k8s.ingress.replicas ?? (tier === "local" ? 1 : 2),
+        dashboard: normalized.k8s.ingress.dashboard ?? true,
+        dashboard_subdomain: normalized.k8s.ingress.dashboard_subdomain ?? "traefik",
+      };
+    }
+
+    // MetalLB defaults
+    if (normalized.k8s.metallb) {
+      normalized.k8s.metallb = {
+        ...normalized.k8s.metallb,
+        enabled: normalized.k8s.metallb.enabled ?? true,
+        mode: "layer2",
+      };
+    }
+
+    // Public IP defaults
+    if (normalized.k8s.public_ip) {
+      normalized.k8s.public_ip = {
+        ...normalized.k8s.public_ip,
+        health_check: normalized.k8s.public_ip.health_check ?? {
+          type: "tcp",
+          port: 443,
+        },
+      };
+    }
+
     // Auto-scaling defaults
-    if (normalized.cluster.auto_scaling) {
-      normalized.cluster.auto_scaling = {
-        enabled: normalized.cluster.auto_scaling.enabled ?? false,
-        min_nodes: normalized.cluster.auto_scaling.min_nodes ?? 3, // HA minimum
-        max_nodes: normalized.cluster.auto_scaling.max_nodes ?? 10,
-        cpu_utilization_percentage:
-          normalized.cluster.auto_scaling.cpu_utilization_percentage ?? 70,
-        providers: normalized.cluster.auto_scaling.providers ?? [],
-      };
-    }
-  }
-
-  // ============================================================
-  // FEATURES DEFAULTS
-  // ============================================================
-  if (normalized.features) {
-    // Traefik dashboard defaults
-    if (normalized.features.traefik_dashboard) {
-      normalized.features.traefik_dashboard = {
-        enabled: normalized.features.traefik_dashboard.enabled ?? false,
-        sub_domains: normalized.features.traefik_dashboard.sub_domains ?? "traefik",
-        accessible_outside_vpn:
-          normalized.features.traefik_dashboard.accessible_outside_vpn ?? false, // Secure by default
+    if (normalized.k8s.auto_scaling) {
+      normalized.k8s.auto_scaling = {
+        enabled: normalized.k8s.auto_scaling.enabled ?? false,
+        min_nodes: normalized.k8s.auto_scaling.min_nodes ?? haReqs.min_k8s_workers,
+        max_nodes: normalized.k8s.auto_scaling.max_nodes ?? 10,
+        cpu_utilization_percentage: normalized.k8s.auto_scaling.cpu_utilization_percentage ?? 70,
+        providers: normalized.k8s.auto_scaling.providers ?? [],
       };
     }
 
-    // SSO defaults
-    if (normalized.features.sso) {
-      normalized.features.sso = {
-        enabled: normalized.features.sso.enabled ?? false,
-        type: normalized.features.sso.type ?? "authentik",
-        sub_domains: normalized.features.sso.sub_domains ?? "sso",
-        accessible_outside_vpn: normalized.features.sso.accessible_outside_vpn ?? false,
-      };
-    }
-
-    // Apply same pattern for all features: secure by default (not accessible outside VPN)
-    const featureDefaults = {
-      accessible_outside_vpn: false, // SECURITY: VPN-only by default
-    };
-
-    // Apply to all optional features
-    if (normalized.features.vault) {
-      normalized.features.vault = { ...featureDefaults, ...normalized.features.vault };
-    }
-    if (normalized.features.monitoring) {
-      normalized.features.monitoring = {
-        ...featureDefaults,
-        ...normalized.features.monitoring,
-      };
-    }
-    if (normalized.features.argocd) {
-      normalized.features.argocd = { ...featureDefaults, ...normalized.features.argocd };
-    }
-    if (normalized.features.gitlab) {
-      normalized.features.gitlab = { ...featureDefaults, ...normalized.features.gitlab };
-    }
-    if (normalized.features.pg_admin) {
-      normalized.features.pg_admin = {
-        ...featureDefaults,
-        ...normalized.features.pg_admin,
-      };
-    }
-    if (normalized.features.nextcloud) {
-      normalized.features.nextcloud = {
-        ...featureDefaults,
-        ...normalized.features.nextcloud,
-      };
-    }
-    if (normalized.features.wiki) {
-      normalized.features.wiki = { ...featureDefaults, ...normalized.features.wiki };
-    }
-    if (normalized.features.sonarqube) {
-      normalized.features.sonarqube = {
-        ...featureDefaults,
-        ...normalized.features.sonarqube,
-      };
-    }
-    if (normalized.features.nexus) {
-      normalized.features.nexus = { ...featureDefaults, ...normalized.features.nexus };
-    }
-    if (normalized.features.velero) {
-      normalized.features.velero = { ...featureDefaults, ...normalized.features.velero };
-    }
-    if (normalized.features.postgres_operator) {
-      normalized.features.postgres_operator = {
-        ...featureDefaults,
-        ...normalized.features.postgres_operator,
-      };
-    }
-    if (normalized.features.mail) {
-      normalized.features.mail = { ...featureDefaults, ...normalized.features.mail };
-    }
+    // Ensure node arrays exist
+    normalized.k8s.master_nodes = normalized.k8s.master_nodes ?? [];
+    normalized.k8s.worker_nodes = normalized.k8s.worker_nodes ?? [];
+    normalized.k8s.ha_proxy_nodes = normalized.k8s.ha_proxy_nodes ?? [];
   }
 
   // ============================================================
@@ -204,9 +197,7 @@ export function applyDefaults(infra: NormalizedInfrastructure): NormalizedInfras
   if (!normalized.state) {
     normalized.state = {
       backend: "local",
-      path: normalized.project?.environment
-        ? `.soverstack/${normalized.project.environment}/state`
-        : ".soverstack/state",
+      path: ".soverstack/state",
     };
   }
 
@@ -214,54 +205,63 @@ export function applyDefaults(infra: NormalizedInfrastructure): NormalizedInfras
 }
 
 /**
+ * Get HA requirements for a specific tier
+ */
+export function getHARequirements(tier: InfrastructureTierType) {
+  return HA_REQUIREMENTS[tier];
+}
+
+/**
  * Get default values documentation for user reference
  */
 export function getDefaultsDocumentation(): Record<string, any> {
   return {
-    firewall: {
-      enabled: true,
-      type: "vyos",
-      min_vms: 2,
-    },
-    bastion: {
-      enabled: true,
-      type: "headscale",
-      oidc_enforced: true,
-      database_type: "postgres",
-      vpn_subnet: "100.64.0.0/10",
-      min_vms: 2,
-    },
-    datacenter: {
-      network: {
-        type: "vswitch",
+    networking: {
+      public_ip: { type: "allocated_block" },
+      vpn: {
+        enabled: true,
+        type: "headscale",
+        vpn_subnet: "100.64.0.0/10",
+        oidc_enforced: true,
       },
-      ceph: {
-        enabled: false,
+      firewall: {
+        enabled: true,
+        type: "vyos",
+      },
+      dns: { type: "powerdns" },
+    },
+    security: {
+      vault: {
+        enabled: true,
+        storage: "postgresql",
+        accessible_outside_vpn: false,
+      },
+      sso: {
+        enabled: true,
+        type: "keycloak",
+        accessible_outside_vpn: false,
       },
     },
-    cluster: {
+    k8s: {
       network: {
         pod_cidr: "10.244.0.0/16",
         service_cidr: "10.96.0.0/12",
         cni: "cilium",
-        cilium_features: {
-          ebpf_enabled: true,
-          cluster_mesh: true,
-        },
       },
-      auto_scaling: {
-        enabled: false,
-        min_nodes: 3,
-        max_nodes: 10,
-        cpu_utilization_percentage: 70,
+      ingress: {
+        type: "traefik",
+        replicas: 2,
+        dashboard: true,
       },
-    },
-    features: {
-      accessible_outside_vpn: false, // All features VPN-only by default
+      metallb: {
+        enabled: true,
+        mode: "layer2",
+      },
     },
     state: {
       backend: "local",
       path: ".soverstack/state",
     },
+    ha_requirements: HA_REQUIREMENTS,
   };
 }

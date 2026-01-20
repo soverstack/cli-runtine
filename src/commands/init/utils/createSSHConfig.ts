@@ -1,61 +1,106 @@
-import { InitOptions } from "../utils";
+import { InitOptions } from "./index";
 import fs from "fs";
 import path from "path";
 
-export const createSSHConfig = ({ projectName }: InitOptions, env?: string) => {
-  const fileName = env ? `ssh-config-${env}.yaml` : "ssh-config.yaml";
-  const projectPath = path.resolve(process.cwd(), projectName);
-  const filePath = path.join(projectPath, fileName);
+export const createSSHConfig = ({
+  projectName,
+  infrastructureTier,
+  outputDir,
+  currentDc,
+}: InitOptions): void => {
+  const targetDir = outputDir || path.resolve(process.cwd(), projectName);
+  const filePath = path.join(targetDir, "ssh_config.yaml");
+  const tier = infrastructureTier || "production";
 
-  const content = `# ############################################################
-# 🛡️ SSH INFRASTRUCTURE CONFIGURATION ${env ? `- ${env.toUpperCase()}` : ""}
-# ############################################################
-# Documentation: https://docs.soverstack.io/configuration/ssh
+  // Header suffix for display
+  const dcUpper = currentDc ? currentDc.toUpperCase() : "";
+  const headerSuffix = dcUpper ? ` - ${dcUpper}` : "";
+
+  // Rotation days based on tier
+  const rotationDays = getRotationDays(tier);
+
+  const content = `# ============================================================
+# SSH CONFIGURATION${headerSuffix}
+# ============================================================
 #
-# SECURITY GUIDELINES:
-# 1. Follow the "Least Privilege Access" principle.
-# 2. Prefer Environment Variables or Vault over local paths.
-# 3. NEVER store raw private keys within this repository.
-# 
-# ############################################################
-WE FORCE THE USER TO ROTATE THE SSH KEY EVERY 2 WEEKS; AT LEAST ONE OF THE KEY; we alays need at least to 2 SUDO KEY
-AND WE USE knockd to pen the cluster knockd
-users:
-
-  # 👤 SYSTEM ADMIN: Primary user for Proxmox and VyOS management
-  - user: "soverstack_user"
-    groups: "sudo"
-    description: "Main infrastructure administrator account"
-    ssh_keys:
-      # Recommended: Fetch keys from Environment Variables
-      public_key_env: "SSH_PUBLIC_KEY"
-      private_key_env: "SSH_PRIVATE_KEY"
-
-  # 🤖 CI/CD AUTOMATION: Service account for GitHub Actions / GitLab Runners
-  - user: "ci_automation"
-    groups: "sudo"
-    description: "Automated deployment and maintenance account"
-    ssh_keys:
-      # High Security: Fetch keys from HashiCorp Vault
-      vault_enabled: true
-      public_key_vault_path: "secret/data/infra/ssh/ci_public"
-      private_key_vault_path: "secret/data/infra/ssh/ci_private"
+# Structure matches SSHKeys type:
+#   user: string
+#   public_key: CredentialRef  (type: vault | env | file)
+#   private_key: CredentialRef (type: vault | env | file)
+#   groups: UserGroupType      (sudo | docker | kvm | systemd-journal | adm)
+#
+# SECURITY REQUIREMENTS:
+# 1. Minimum 2 sudo-enabled users required
+# 2. SSH key rotation is ENFORCED
+# 3. knockd is REQUIRED - SSH port is closed by default
+# 4. NEVER store raw private keys in this repository
+#
+# ============================================================
 
 # ------------------------------------------------------------
-# 💡 ALTERNATIVE METHODS (Reference only)
+# KEY ROTATION POLICY
 # ------------------------------------------------------------
-#  - user: "backup_operator"
-#    groups: "ci"
-#    # Manual Path Method (Ensure paths are outside the git tree)
-#    public_key_path: "/home/admin/.ssh/external_id_rsa.pub"
-#    private_key_path: "/home/admin/.ssh/external_id_rsa"
+rotation_policy:
+  max_age_days: ${rotationDays.max}
+  warning_days: ${rotationDays.warning}
+  # Tier: ${tier}
 
+# ------------------------------------------------------------
+# KNOCKD CONFIGURATION
+# ------------------------------------------------------------
+# To connect: knock -v <host> 7000 8500 9000 12000 && ssh user@host
 knockd:
   enabled: true
-  sequence: 7000,8500,9000,12000
+  interface: eth0
+  sequence:
+    - 7000
+    - 8500
+    - 9000
+    - 12000
   seq_timeout: 5
+  port_timeout: 30
 
+# ------------------------------------------------------------
+# SSH USERS (SSHKeys[] structure)
+# ------------------------------------------------------------
+# Minimum 2 sudo users required for redundancy.
+#
+users:
+  # Primary administrator
+  - user: "soverstack_admin"
+    groups: sudo
+    public_key:
+      type: env
+      var_name: "SSH_PUBLIC_KEY"
+    private_key:
+      type: env
+      var_name: "SSH_PRIVATE_KEY"
+
+  # Backup administrator
+  - user: "soverstack_backup"
+    groups: sudo
+    public_key:
+      type: env
+      var_name: "SSH_PUBLIC_KEY_BACKUP"
+    private_key:
+      type: env
+      var_name: "SSH_PRIVATE_KEY_BACKUP"
 `;
 
   fs.writeFileSync(filePath, content);
 };
+
+/**
+ * Get rotation days based on infrastructure tier
+ */
+function getRotationDays(tier: string): { max: number; warning: number } {
+  switch (tier) {
+    case "local":
+      return { max: 365, warning: 60 };
+    case "enterprise":
+      return { max: 60, warning: 7 };
+    case "production":
+    default:
+      return { max: 90, warning: 14 };
+  }
+}

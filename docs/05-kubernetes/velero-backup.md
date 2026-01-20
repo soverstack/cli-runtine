@@ -1,0 +1,80 @@
+# Velero Backup
+
+Velero provides backup and disaster recovery for Kubernetes clusters.
+
+## Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Velero Architecture                        │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │                   Velero Server                       │   │
+│  │                                                       │   │
+│  │   ┌──────────────┐        ┌──────────────┐           │   │
+│  │   │   Backups    │        │   Restores   │           │   │
+│  │   │  (Scheduled) │        │  (On-demand) │           │   │
+│  │   └──────┬───────┘        └──────────────┘           │   │
+│  └──────────┼───────────────────────────────────────────┘   │
+│             │                                                │
+│  ┌──────────▼───────────────────────────────────────────┐   │
+│  │                  Object Storage                       │   │
+│  │                  (S3/MinIO)                           │   │
+│  │                                                       │   │
+│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐           │   │
+│  │   │ backup-1 │  │ backup-2 │  │ backup-N │           │   │
+│  │   └──────────┘  └──────────┘  └──────────┘           │   │
+│  └───────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Configuration
+
+In `apps.yaml` (Feature):
+
+```yaml
+velero:
+  enabled: true
+  sub_domains: velero
+  accessible_outside_vpn: false
+```
+
+## Features
+
+### Backup
+- Scheduled backups
+- On-demand backups
+- Namespace-level backups
+- Label selector filtering
+
+### Restore
+- Full cluster restore
+- Namespace restore
+- Resource-level restore
+- Cross-cluster migration
+
+### Storage
+- S3-compatible storage (MinIO)
+- Encrypted backups
+- Deduplication
+
+### Volume Snapshots
+- CSI snapshot support
+- Ceph RBD snapshots
+- Restic for file-level backup
+
+## Backup Schedule Example
+
+```yaml
+schedule: "0 2 * * *"  # Daily at 2 AM
+retention:
+  daily: 7
+  weekly: 4
+  monthly: 3
+```
+
+## Related Documentation
+
+- [Apps Layer](../03-layers/apps.md)
+- [Cluster Architecture](./cluster-architecture.md)
+- [Disaster Recovery](../07-runbooks/cluster-recovery.md)

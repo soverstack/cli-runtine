@@ -1,0 +1,25 @@
+# ============================================================
+# SOVERSTACK PLATFORM CONFIGURATION - MULTI-DATACENTER
+# ============================================================
+version: "1.0.0"
+project_name: "b"
+domain: "example.com"
+infrastructure_tier: "enterprise"
+
+# DATACENTERS
+# All paths are explicit - no magic
+datacenters:
+  - name: main
+    primary: true
+    layers:
+      datacenter: "./datacenters/main/datacenter.yaml"
+      compute: "./datacenters/main/core-compute.yaml, ./datacenters/main/compute.yaml"
+      database: "./datacenters/main/core-database.yaml, ./datacenters/main/database.yaml"
+      networking: "./datacenters/main/networking.yaml"
+      security: "./datacenters/main/security.yaml"
+      observability: "./datacenters/main/observability.yaml"
+    ssh: "./datacenters/main/ssh_config.yaml"
+
+state:
+  backend: "local"
+  path: "./.soverstack"

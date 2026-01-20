@@ -1,118 +1,21 @@
-import { InitOptions } from "../utils";
+import { InitOptions } from "./index";
 import ora from "ora";
 import fs from "fs";
 import path from "path";
+import { isMultiDcFunc } from "../logic";
 
 export const createReadme = async (options: InitOptions): Promise<void> => {
   const spinner = ora("Creating README.md").start();
   const projectPath = path.resolve(process.cwd(), options.projectName);
 
   try {
-    const hasEnv = options.environments && options.environments.length > 0;
-    const envList = hasEnv ? options.environments!.join(", ") : "default";
+    const isMultiDc = isMultiDcFunc(options.datacenters)  
+    const tier = options.infrastructureTier || "production";
 
     const filePath = path.join(projectPath, "README.md");
-    const content = `# ${options.projectName}
-
-Soverstack infrastructure project
-
-## 📋 Project Information
-
-- **Mode**: ${options.mode}
-- **Environments**: ${envList}
-- **Created**: ${new Date().toISOString().split("T")[0]}
-
-## 🚀 Quick Start
-
-### 1. Validate Configuration
-
-\`\`\`bash
-soverstack validate platform.yaml
-\`\`\`
-
-### 2. Generate Plan
-
-\`\`\`bash
-soverstack plan
-\`\`\`
-
-### 3. Apply Infrastructure
-
-\`\`\`bash
-soverstack apply
-\`\`\`
-
-## 📁 Project Structure
-
-\`\`\`
-${options.projectName}/
-├── platform.yaml           # Main configuration file
-├── layers/                 # Infrastructure layers
-${
-  options.mode === "advanced"
-    ? `│   ├── datacenters/        # Datacenter configurations
-│   ├── computes/           # VM configurations
-│   ├── clusters/           # K8s cluster configurations
-│   └── features/           # Features (monitoring, logging, etc.)`
-    : `│   └── infrastructure.yaml # Simple all-in-one configuration`
-}
-├── ssh/                    # SSH keys (DO NOT COMMIT!)
-└── .soverstack/            # Soverstack internal files
-    ├── state/              # State files
-    ├── logs/               # Execution logs
-    └── cache/              # Cache
-\`\`\`
-
-## 🔒 Security Best Practices
-
-⚠️ **IMPORTANT**: Never commit sensitive files to Git!
-
-- ✅ Use environment variables for credentials
-- ✅ Use Vault for secrets management
-- ✅ Keep SSH keys secure (already in .gitignore)
-- ❌ Never commit plain text passwords
-- ❌ Never commit \`.env\` files
-- ❌ Never commit state files with sensitive data
-
-## 🛠️ Available Commands
-
-\`\`\`bash
-# Validate configuration
-soverstack validate platform.yaml
-
-# Generate execution plan
-soverstack plan
-
-# Apply infrastructure changes
-soverstack apply
-
-# Destroy infrastructure
-soverstack destroy
-
-# Update DNS records
-soverstack dns:update
-
-# Generate dependency graph
-soverstack graph
-
-# Generate new SSH keys
-soverstack generate:ssh-keys
-\`\`\`
-
-## 📚 Documentation
-
-- [Soverstack Documentation](https://docs.soverstack.io)
-- [Platform Configuration](./platform.yaml)
-- [Layer Architecture](https://docs.soverstack.io/architecture)
-
-## 🤝 Contributing
-
-This project follows Soverstack best practices for infrastructure as code.
-
----
-
-Generated with ❤️ by Soverstack v1.0.0
-`;
+    const content = isMultiDc
+      ? generateMultiDcReadme(options.projectName, tier, options.datacenters!)
+      : generateSingleDcReadme(options.projectName, tier);
 
     fs.writeFileSync(filePath, content);
     spinner.succeed("README.md created");
@@ -121,3 +24,168 @@ Generated with ❤️ by Soverstack v1.0.0
     throw error;
   }
 };
+
+function generateSingleDcReadme(projectName: string, tier: string): string {
+  return `# ${projectName}
+
+Soverstack infrastructure project
+
+## Project Information
+
+- **Tier**: ${tier}
+- **Created**: ${new Date().toISOString().split("T")[0]}
+
+## Quick Start
+
+### 1. Configure your environment
+
+Edit the \`.env\` file with your credentials:
+\`\`\`bash
+POSTGRES_PASSWORD=your-secure-password
+SSH_PUBLIC_KEY=your-ssh-public-key
+\`\`\`
+
+### 2. Validate Configuration
+
+\`\`\`bash
+soverstack validate platform.yaml
+\`\`\`
+
+### 3. Apply Infrastructure
+
+\`\`\`bash
+soverstack apply platform.yaml
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── platform.yaml           # Main configuration (entry point)
+├── datacenter.yaml         # Physical servers (PVE + backup)
+├── networking.yaml         # DNS, VPN, Firewall
+├── security.yaml           # Vault, SSO, Cert-manager
+├── observability.yaml      # Monitoring, Logging, Alerting
+├── ssh_config.yaml         # SSH + knockd configuration
+├── .env                    # Environment variables (DO NOT COMMIT!)
+├── compute/
+│   └── core-compute.yaml   # Infrastructure VMs
+├── database/
+│   └── core-database.yaml  # Infrastructure databases
+└── .soverstack/            # Internal files
+    ├── state/              # State files
+    ├── logs/               # Execution logs
+    └── cache/              # Cache
+\`\`\`
+
+## Security
+
+- **knockd**: SSH port is closed by default. Use port knocking to access.
+- **Key rotation**: SSH keys must be rotated based on tier policy.
+- **Never commit**: \`.env\`, SSH keys, credentials
+
+## Commands
+
+\`\`\`bash
+soverstack validate platform.yaml   # Validate configuration
+soverstack plan platform.yaml       # Preview changes
+soverstack apply platform.yaml      # Apply infrastructure
+soverstack destroy platform.yaml    # Destroy infrastructure
+\`\`\`
+
+---
+Generated by Soverstack v1.0.0
+`;
+}
+
+function generateMultiDcReadme(
+  projectName: string,
+  tier: string,
+  datacenters: string[]
+): string {
+  return `# ${projectName}
+
+Soverstack infrastructure project (Multi-Datacenter)
+
+## Project Information
+
+- **Tier**: ${tier}
+- **Datacenters**: ${datacenters.join(", ")}
+- **Created**: ${new Date().toISOString().split("T")[0]}
+
+## Quick Start
+
+### 1. Configure your environment
+
+Edit the \`.env\` files with your credentials:
+\`\`\`bash
+# Root .env (global)
+POSTGRES_PASSWORD=your-secure-password
+
+# Per-datacenter .env
+# datacenters/${datacenters[0]}/.env
+\`\`\`
+
+### 2. Validate Configuration
+
+\`\`\`bash
+soverstack validate platform.yaml --dc ${datacenters[0]}
+\`\`\`
+
+### 3. Apply Infrastructure
+
+\`\`\`bash
+soverstack apply platform.yaml --dc ${datacenters[0]}
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── platform.yaml              # Main configuration (references all DCs)
+├── .env                       # Global environment variables
+│
+└── datacenters/               # Per-datacenter configurations
+${datacenters.map((dc) => `    └── ${dc}/
+        ├── datacenter.yaml    # Physical servers
+        ├── networking.yaml    # DNS, VPN, Firewall
+        ├── security.yaml      # Vault, SSO
+        ├── observability.yaml # Monitoring
+        ├── ssh_config.yaml    # SSH + knockd
+        ├── .env               # DC-specific env vars
+        ├── compute/
+        │   └── core-compute.yaml
+        └── database/
+            └── core-database.yaml`).join("\n")}
+\`\`\`
+
+## Multi-Datacenter Architecture
+
+Each datacenter has its own complete configuration:
+- **Independent infrastructure**: Each DC can be deployed separately
+- **Own state**: Isolated state management per DC
+- **Own credentials**: Separate .env per DC
+
+## Security
+
+- **knockd**: SSH port is closed by default. Use port knocking.
+- **Key rotation**: Enforced per tier
+- **Never commit**: \`.env\`, SSH keys, credentials
+
+## Commands
+
+\`\`\`bash
+# Validate specific datacenter
+soverstack validate platform.yaml --dc ${datacenters[0]}
+
+# Apply specific datacenter
+soverstack apply platform.yaml --dc ${datacenters[0]}
+
+# Apply all datacenters
+${datacenters.map((dc) => `soverstack apply platform.yaml --dc ${dc}`).join("\n")}
+\`\`\`
+
+---
+Generated by Soverstack v1.0.0
+`;
+}

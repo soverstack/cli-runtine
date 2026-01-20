@@ -1,0 +1,64 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOVERSTACK PLATFORM CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Main configuration file for your Soverstack platform.
+#
+# Documentation: https://docs.soverstack.io/getting-started
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+project_name: my-soverstack
+domain: example.com
+environment: production
+infrastructure_tier: production  # local | production | enterprise
+version: "1.0.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER CONFIGURATION
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Multi-file support:
+#   - Separate files with commas: "path/file1.yaml,path/file2.yaml"
+#   - Arrays are concatenated (instance_type_definitions, virtual_machines, databases)
+#   - Non-array properties cause error if declared in multiple files
+#
+layers:
+  datacenter: "layers/datacenter.yaml"
+  networking: "layers/networking.yaml"
+
+  # Compute: core infrastructure VMs + your custom VMs
+  compute: "layers/compute/core-compute.yaml,layers/compute/compute.yaml"
+
+  # Databases: core databases + your custom databases
+  database: "layers/databases/core-databases.yaml,layers/databases/databases.yaml"
+
+  cluster: "layers/cluster.yaml"
+  apps: "layers/apps.yaml"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SSH CONFIGURATION
+# ─────────────────────────────────────────────────────────────────────────────
+ssh:
+  public_key:
+    type: file
+    path: ~/.ssh/soverstack.pub
+  private_key:
+    type: file
+    path: ~/.ssh/soverstack
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STATE BACKEND
+# ─────────────────────────────────────────────────────────────────────────────
+state:
+  backend: local
+  path: .soverstack/state
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STORAGE BACKENDS (for backups)
+# ─────────────────────────────────────────────────────────────────────────────
+storage_backends:
+  - name: s3-backup
+    type: s3
+    endpoint: "minio.internal.example.com:9000"
+    bucket_prefix: soverstack-backup

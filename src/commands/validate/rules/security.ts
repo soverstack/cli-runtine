@@ -1,4 +1,5 @@
 import { ValidationResult, addError, addWarning } from "../utils/types";
+import { CredentialRef } from "../../../types";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECURITY VALIDATION RULES
@@ -11,6 +12,94 @@ import { ValidationResult, addError, addWarning } from "../utils/types";
 // - accessible_outside_vpn MUST be explicitly set (no unsafe defaults)
 //
 // ═══════════════════════════════════════════════════════════════════════════
+
+
+/**
+ * Validates CredentialRef - the unified way to reference secrets
+ */
+export function validateCredentialRef(
+  credentialRef: CredentialRef | undefined,
+  fieldName: string,
+  result: ValidationResult,
+  layer: string,
+  required: boolean = true
+): boolean {
+  if (!credentialRef) {
+    if (required) {
+      addError(
+        result,
+        layer,
+        fieldName,
+        `Credential reference is required`,
+        "error",
+        `Add a CredentialRef with one of:
+- { type: "env", var_name: "ENV_VAR_NAME" } (recommended)
+- { type: "vault", path: "secret/data/path" } (most secure)
+- { type: "file", path: "/path/to/secret" }`
+      );
+      return false;
+    }
+    return true;
+  }
+
+  // Validate based on type
+  switch (credentialRef.type) {
+    case "vault":
+      if (!credentialRef.path) {
+        addError(
+          result,
+          layer,
+          `${fieldName}.path`,
+          `Vault path is required for vault credential type`,
+          "error",
+          `Add path: "secret/data/your-secret"`
+        );
+        return false;
+      }
+      break;
+
+    case "env":
+      if (!credentialRef.var_name) {
+        addError(
+          result,
+          layer,
+          `${fieldName}.var_name`,
+          `Environment variable name is required for env credential type`,
+          "error",
+          `Add var_name: "YOUR_ENV_VAR"`
+        );
+        return false;
+      }
+      break;
+
+    case "file":
+      if (!credentialRef.path) {
+        addError(
+          result,
+          layer,
+          `${fieldName}.path`,
+          `File path is required for file credential type`,
+          "error",
+          `Add path: "/path/to/your/secret"`
+        );
+        return false;
+      }
+      break;
+
+    default:
+      addError(
+        result,
+        layer,
+        `${fieldName}.type`,
+        `Invalid credential type`,
+        "error",
+        `Must be one of: "vault", "env", "file"`
+      );
+      return false;
+  }
+
+  return true;
+}
 
 /**
  * Validates that no plain text passwords are used

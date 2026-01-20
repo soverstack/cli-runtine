@@ -2,27 +2,67 @@ import fs from "fs";
 import path from "path";
 import chalk from "chalk";
 import ora from "ora";
-import { generateKeyPairSync, createPublicKey } from "crypto";
 
 import {
-  createBastionFile,
-  createFirewallFile,
-  createFeatureFile,
-  createClusterFile,
-  createComputeFile,
+  createK8sFile,
+  createCoreComputeFile,
   createDatacenterFile,
+  createCoreDatabaseFile,
+  createNetworkingFile,
+  createSecurityFile,
+  createObservabilityFile,
+  createAppsFile,
+  createOrchestratorFile,
   createReadme,
-  createSimpleLayerFile,
   createGitignore,
   InitOptions,
   generatePlatformYaml,
   generateSshKeys,
   createSSHConfig,
   createEnv,
-  createObservabilityFile,
-  createIAMFile,
+  createEnvForDatacenter,
 } from "./utils";
 
+/**
+ * ProjectInitializer - Supports 2 initialization modes:
+ *
+ * MODE 1: SINGLE DC (default)
+ *   project/
+ *   ├── platform.yaml
+ *   ├── datacenter.yaml
+ *   ├── networking.yaml
+ *   ├── security.yaml
+ *   ├── observability.yaml
+ *   ├── ssh_config.yaml
+ *   ├── .env
+ *   ├── compute/
+ *   │   └── core-compute.yaml
+ *   ├── database/
+ *   │   └── core-database.yaml
+ *   └── .soverstack/
+ *       ├── state/
+ *       ├── logs/
+ *       └── cache/
+ *
+ * MODE 2: MULTI-DC (--dc paris,frankfurt)
+ *   project/
+ *   ├── platform.yaml           # References all DCs
+ *   ├── .env                    # Global env vars
+ *   └── datacenters/
+ *       ├── paris/
+ *       │   ├── datacenter.yaml
+ *       │   ├── networking.yaml
+ *       │   ├── security.yaml
+ *       │   ├── observability.yaml
+ *       │   ├── ssh_config.yaml
+ *       │   ├── .env
+ *       │   ├── compute/
+ *       │   │   └── core-compute.yaml
+ *       │   └── database/
+ *       │       └── core-database.yaml
+ *       └── frankfurt/
+ *           └── ... (same structure)
+ */
 export class ProjectInitializer {
   private projectPath: string;
   private options: InitOptions;
@@ -32,36 +72,25 @@ export class ProjectInitializer {
     this.projectPath = path.resolve(process.cwd(), options.projectName);
   }
 
+  /**
+   * Check if multiple datacenters are configured
+   */
+  private isMultiDc(): boolean {
+    return isMultiDcFunc(this.options.datacenters);
+  }
+
   async initialize(): Promise<void> {
-    console.log(chalk.blue("🚀 Initializing Soverstack project...\n"));
-
-    // Step 1: Create project directory
+    console.log(chalk.blue("Initializing Soverstack project...\n"));
     await this.createProjectDirectory();
-
-    // Step 2: Create directory structure
     await this.createDirectoryStructure();
-
-    // Step 3: Generate layer files
     await this.generateLayerFiles();
-
-    // Step 4: Generate platform.yaml
-    await generatePlatformYaml(this.options);
-
-    // Step 5: Create .soverstack directory
     await this.createSoverstackDirectory();
-
-    // Step 6: Generate SSH keys if requested
     if (this.options.generateSshKeys) {
       await generateSshKeys(this.projectPath);
     }
-
-    // Step 7: Create .gitignore
     createGitignore(this.options);
-
-    // Step 8: Create README
     await createReadme(this.options);
-
-    console.log(chalk.green("\n✅ Project initialized successfully!\n"));
+    console.log(chalk.green("\nProject initialized successfully!\n"));
     this.printNextSteps();
   }
 
@@ -83,25 +112,11 @@ export class ProjectInitializer {
   private async createDirectoryStructure(): Promise<void> {
     const spinner = ora("Creating directory structure").start();
     try {
-      const dirs =
-        this.options.mode === "advanced"
-          ? [
-              "layers/datacenters",
-              "layers/computes",
-              "layers/clusters",
-              "layers/features",
-              "layers/firewalls",
-              "layers/bastions",
-              "layers/iam",
-              "layers/observability",
-              "ssh",
-            ]
-          : ["ssh", "layers"];
-      //  "layers/iam", "layers/observability"
-      dirs.forEach((dir) => {
-        fs.mkdirSync(path.join(this.projectPath, dir), { recursive: true });
-      });
-
+      if (this.isMultiDc()) {
+        this.createMultiDcDirectories();
+      } else {
+        this.createSingleDcDirectories();
+      }
       spinner.succeed("Directory structure created");
     } catch (error) {
       spinner.fail("Failed to create directory structure");
@@ -109,84 +124,132 @@ export class ProjectInitializer {
     }
   }
 
+  /**
+   * MODE 1: Single DC - files at root
+   */
+  private createSingleDcDirectories(): void {
+    fs.mkdirSync(path.join(this.projectPath, "compute"), { recursive: true });
+    fs.mkdirSync(path.join(this.projectPath, "database"), { recursive: true });
+  }
+
+  /**
+   * MODE 2: Multi-DC
+   */
+  private createMultiDcDirectories(): void {
+    const dirs = this.options.datacenters!.flatMap((dc) => [
+      `datacenters/${dc}`,
+      `datacenters/${dc}/compute`,
+      `datacenters/${dc}/database`,
+    ]);
+    dirs.forEach((dir) => {
+      fs.mkdirSync(path.join(this.projectPath, dir), { recursive: true });
+    });
+  }
+
   private async generateLayerFiles(): Promise<void> {
-    const spinner = ora("Generating layer files").start();
+    const spinner = ora("Generating configuration files").start();
     try {
-      if (this.options.mode === "advanced") {
-        await this.generateAdvancedLayerFiles();
+      if (this.isMultiDc()) {
+        this.generateMultiDcFiles();
       } else {
-        await this.generateSimpleLayerFiles();
+        this.generateSingleDcFiles();
       }
-      spinner.succeed(".env file created");
-      spinner.succeed("ssh_config file created");
-      spinner.succeed("Layer files generated");
+      spinner.succeed("Configuration files generated");
     } catch (error) {
-      spinner.fail("Failed to generate layer files");
+      spinner.fail("Failed to generate configuration files");
       throw error;
     }
   }
 
-  private async generateAdvancedLayerFiles(): Promise<void> {
-    const hasEnv = this.options.environments && this.options.environments.length > 0;
+  /**
+   * MODE 1: Single DC - all files at root
+   */
+  private generateSingleDcFiles(): void {
+    const opts = { ...this.options, outputDir: this.projectPath };
+    const computeDir = path.join(this.projectPath, "compute");
+    const databaseDir = path.join(this.projectPath, "database");
 
-    if (hasEnv) {
-      // Generate environment-specific files
-      this.options.environments!.forEach((env) => {
-        createDatacenterFile(this.options, env);
-        createComputeFile(this.options, env);
-        createClusterFile(this.options, env);
-        createFeatureFile(this.options, env);
-        createFirewallFile(this.options, env);
-        createBastionFile(this.options, env);
-        createIAMFile(this.options, env);
-        createObservabilityFile(this.options, env);
-        createSSHConfig(this.options, env);
-        createEnv(this.options, env);
-      });
-    } else {
-      // Generate generic files without environment suffix
-      createDatacenterFile(this.options);
-      createComputeFile(this.options);
-      createClusterFile(this.options);
-      createFeatureFile(this.options);
-      createFirewallFile(this.options);
-      createBastionFile(this.options);
-      createObservabilityFile(this.options);
-      createIAMFile(this.options);
-      createSSHConfig(this.options);
-      createEnv(this.options);
-    }
+    // Root level files
+    generatePlatformYaml(opts);
+    createOrchestratorFile(opts);
+    createDatacenterFile(opts);
+    createNetworkingFile(opts);
+    createSecurityFile(opts);
+    createObservabilityFile(opts);
+    createSSHConfig(opts);
+    createEnv(opts);
+
+    // Compute files
+    createCoreComputeFile({ ...opts, outputDir: computeDir });
+
+    // Database files
+    createCoreDatabaseFile({ ...opts, outputDir: databaseDir });
   }
 
-  private async generateSimpleLayerFiles(): Promise<void> {
-    const hasEnv = this.options.environments && this.options.environments.length > 0;
+  /**
+   * MODE 2: Multi-DC
+   * - platform.yaml at root (references datacenters)
+   * - orchestrator.yaml at root (orchestrator is on primary DC only)
+   * - .env at root (global)
+   * - datacenters/<dc>/ each with full layer files
+   */
+  private generateMultiDcFiles(): void {
+    // Root level platform.yaml, orchestrator.yaml and global .env
+    const rootOpts = { ...this.options, outputDir: this.projectPath };
+    generatePlatformYaml(rootOpts);
+    createOrchestratorFile(rootOpts);
+    createEnv(rootOpts);
 
-    if (hasEnv) {
-      this.options.environments!.forEach((env) => {
-        createSimpleLayerFile(this.options, env);
-        createObservabilityFile(this.options, env);
-        createSSHConfig(this.options, env);
-        createEnv(this.options, env);
-      });
-    } else {
-      createSimpleLayerFile(this.options);
-      createObservabilityFile(this.options);
-      createSSHConfig(this.options);
-      createEnv(this.options);
-    }
+    // Per-datacenter files
+    this.options.datacenters!.forEach((dc) => {
+      const dcDir = path.join(this.projectPath, "datacenters", dc);
+      const computeDir = path.join(dcDir, "compute");
+      const databaseDir = path.join(dcDir, "database");
+      const dcOpts = { ...this.options, outputDir: dcDir, currentDc: dc };
+
+      // Datacenter-specific files
+      createDatacenterFile(dcOpts);
+      createNetworkingFile(dcOpts);
+      createSecurityFile(dcOpts);
+      createObservabilityFile(dcOpts);
+      createSSHConfig(dcOpts);
+      createEnvForDatacenter(dcDir, dc);
+
+      // Compute files
+      createCoreComputeFile({ ...dcOpts, outputDir: computeDir });
+
+      // Database files
+      createCoreDatabaseFile({ ...dcOpts, outputDir: databaseDir });
+    });
   }
+
+  /**
+   * Create .env file for a specific datacenter
+   */
 
   private async createSoverstackDirectory(): Promise<void> {
     const spinner = ora("Creating .soverstack directory").start();
     try {
       const soverstackPath = path.join(this.projectPath, ".soverstack");
-      fs.mkdirSync(path.join(soverstackPath, "state"), { recursive: true });
-      fs.mkdirSync(path.join(soverstackPath, "logs"), { recursive: true });
-      fs.mkdirSync(path.join(soverstackPath, "cache"), { recursive: true });
 
-      // Create .gitkeep files
-      fs.writeFileSync(path.join(soverstackPath, "state", ".gitkeep"), "");
-      fs.writeFileSync(path.join(soverstackPath, "logs", ".gitkeep"), "");
+      if (this.isMultiDc()) {
+        // Multi-DC: .soverstack/<dc>/state/, logs/
+        this.options.datacenters!.forEach((dc) => {
+          fs.mkdirSync(path.join(soverstackPath, dc, "state"), { recursive: true });
+          fs.mkdirSync(path.join(soverstackPath, dc, "logs"), { recursive: true });
+          fs.writeFileSync(path.join(soverstackPath, dc, "state", ".gitkeep"), "");
+          fs.writeFileSync(path.join(soverstackPath, dc, "logs", ".gitkeep"), "");
+        });
+      } else {
+        // Single DC: .soverstack/state/, logs/
+        fs.mkdirSync(path.join(soverstackPath, "state"), { recursive: true });
+        fs.mkdirSync(path.join(soverstackPath, "logs"), { recursive: true });
+        fs.writeFileSync(path.join(soverstackPath, "state", ".gitkeep"), "");
+        fs.writeFileSync(path.join(soverstackPath, "logs", ".gitkeep"), "");
+      }
+
+      // Cache directory is always at root
+      fs.mkdirSync(path.join(soverstackPath, "cache"), { recursive: true });
       fs.writeFileSync(path.join(soverstackPath, "cache", ".gitkeep"), "");
 
       spinner.succeed(".soverstack directory created");
@@ -197,64 +260,67 @@ export class ProjectInitializer {
   }
 
   private printNextSteps(): void {
-    const hasEnv = this.options.environments && this.options.environments.length > 0;
-
-    console.log(chalk.bold("📝 Next Steps:\n"));
+    console.log(chalk.bold("\nNext Steps:\n"));
     console.log(chalk.gray("1.") + " " + chalk.cyan(`cd ${this.options.projectName}`));
 
-    if (hasEnv) {
-      console.log(chalk.gray("2.") + " Configure your infrastructure in:");
-      this.options.environments!.forEach((env) => {
-        if (this.options.mode === "advanced") {
-          console.log(chalk.gray(`   - layers/datacenters/dc-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/firewalls/firewall-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/bastions/bastion-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/iam/iam-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/computes/compute-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/clusters/k8s-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/features/features-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/observability/observability-${env}.yaml`));
-        } else {
-          console.log(chalk.gray(`   - layers/infrastructure-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/iam/iam-${env}.yaml`));
-          console.log(chalk.gray(`   - layers/observability/observability-${env}.yaml`));
-        }
-      });
+    if (this.isMultiDc()) {
+      this.printNextStepsMultiDc();
     } else {
-      console.log(chalk.gray("2.") + " Configure your infrastructure in:");
-      if (this.options.mode === "advanced") {
-        console.log(chalk.gray("   - layers/datacenters/datacenter.yaml"));
-        console.log(chalk.gray("   - layers/firewalls/firewall.yaml"));
-        console.log(chalk.gray("   - layers/bastions/bastion.yaml"));
-        console.log(chalk.gray("   - layers/iam/iam.yaml"));
-        console.log(chalk.gray("   - layers/computes/compute.yaml"));
-        console.log(chalk.gray("   - layers/clusters/k8s.yaml"));
-        console.log(chalk.gray("   - layers/features/features.yaml"));
-        console.log(chalk.gray("   - layers/observability/observability.yaml"));
-      } else {
-        console.log(chalk.gray("   - layers/infrastructure.yaml"));
-        console.log(chalk.gray("   - layers/iam/iam.yaml"));
-        console.log(chalk.gray("   - layers/observability/observability.yaml"));
-      }
+      this.printNextStepsSingleDc();
     }
 
-    console.log(chalk.gray("3.") + " Set environment variables for credentials in the .env file:");
-
-    console.log(chalk.gray("   SSH_PUBLIC_KEY='your-public-key'"));
-    console.log(chalk.gray("   SSH_PRIVATE_KEY='your-private-key'"));
-
-    console.log(chalk.gray("4.") + " Validate your configuration:");
-    console.log(chalk.gray("   soverstack validate platform.yaml"));
-
-    console.log(chalk.gray("5.") + " Generate and review the execution plan:");
-    console.log(chalk.gray("   soverstack plan"));
-
-    console.log(chalk.gray("6.") + " Apply the infrastructure:");
-    console.log(chalk.gray("   soverstack apply\n"));
-
-    console.log(
-      chalk.yellow("⚠️  Remember: Never commit sensitive files (SSH keys, .env, credentials)")
-    );
-    console.log(chalk.green("✨ Happy infrastructure coding!\n"));
+    console.log(chalk.yellow("\nNever commit: SSH keys, .env files"));
   }
+
+  private printNextStepsSingleDc(): void {
+    console.log(chalk.gray("2.") + " Configure infrastructure:");
+    console.log(chalk.gray("   - platform.yaml"));
+    console.log(chalk.gray("   - datacenter.yaml"));
+    console.log(chalk.gray("   - compute/core-compute.yaml"));
+    console.log(chalk.gray("   - database/core-database.yaml"));
+    console.log(chalk.gray("   - networking.yaml"));
+    console.log(chalk.gray("   - security.yaml"));
+    console.log(chalk.gray("   - observability.yaml"));
+    console.log(chalk.gray("   - ssh_config.yaml"));
+    console.log(chalk.gray("\n3.") + " Set .env variables");
+    console.log(chalk.gray("4.") + " Validate: " + chalk.cyan("soverstack validate platform.yaml"));
+    console.log(chalk.gray("5.") + " Apply: " + chalk.cyan("soverstack apply platform.yaml"));
+  }
+
+  private printNextStepsMultiDc(): void {
+    console.log(chalk.gray("2.") + " Configure datacenters:");
+
+    this.options.datacenters!.forEach((dc) => {
+      console.log(chalk.gray(`   datacenters/${dc}/`));
+      console.log(chalk.gray("     - datacenter.yaml"));
+      console.log(chalk.gray("     - compute/core-compute.yaml"));
+      console.log(chalk.gray("     - database/core-database.yaml"));
+      console.log(chalk.gray("     - networking.yaml"));
+      console.log(chalk.gray("     - security.yaml"));
+      console.log(chalk.gray("     - observability.yaml"));
+      console.log(chalk.gray("     - ssh_config.yaml"));
+      console.log(chalk.gray("     - .env"));
+    });
+
+    console.log(chalk.gray("\n3.") + " Set .env variables (root + per datacenter)");
+
+    this.options.datacenters!.forEach((dc, i) => {
+      const step = 4 + i * 2;
+      console.log(
+        chalk.gray(`${step}.`) +
+          " Validate: " +
+          chalk.cyan(`soverstack validate platform.yaml --dc ${dc}`)
+      );
+      console.log(
+        chalk.gray(`${step + 1}.`) +
+          " Apply: " +
+          chalk.cyan(`soverstack apply platform.yaml --dc ${dc}`)
+      );
+    });
+  }
+}
+
+
+export const isMultiDcFunc=(datacenters?:string[] )=>{
+ return !!( datacenters &&  datacenters.length > 0);
 }

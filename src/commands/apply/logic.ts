@@ -97,7 +97,7 @@ export async function applyInfrastructure(options: ApplyOptions): Promise<boolea
   // Step 5: Load environment variables
   spinner.start("Loading environment variables...");
 
-  const envVars = loadEnvVariables(platformDir, platform.environment);
+  const envVars = loadEnvVariables(platformDir);
 
   spinner.succeed(`Loaded ${envVars.size} environment variables`);
 
@@ -157,8 +157,7 @@ export async function applyInfrastructure(options: ApplyOptions): Promise<boolea
   if (!currentState) {
     currentState = stateManager.createInitialState(
       plan,
-      normalized.project?.infrastructure_tier || "production",
-      normalized.project?.environment
+      normalized.project?.infrastructure_tier || "production"
     );
   }
 
