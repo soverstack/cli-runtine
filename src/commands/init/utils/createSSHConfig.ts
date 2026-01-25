@@ -6,15 +6,15 @@ export const createSSHConfig = ({
   projectName,
   infrastructureTier,
   outputDir,
-  currentDc,
+  currentZone,
 }: InitOptions): void => {
   const targetDir = outputDir || path.resolve(process.cwd(), projectName);
   const filePath = path.join(targetDir, "ssh_config.yaml");
   const tier = infrastructureTier || "production";
 
   // Header suffix for display
-  const dcUpper = currentDc ? currentDc.toUpperCase() : "";
-  const headerSuffix = dcUpper ? ` - ${dcUpper}` : "";
+  const zoneUpper = currentZone ? currentZone.toUpperCase() : "";
+  const headerSuffix = zoneUpper ? ` - ${zoneUpper}` : "";
 
   // Rotation days based on tier
   const rotationDays = getRotationDays(tier);

@@ -85,6 +85,85 @@ Physical Switch                 Headscale (Control Plane)
     └─────────────────────────────────────────────────────────┘
 ```
 
+## Network Scopes: Global vs Zone
+
+Soverstack separates mesh networks by **scope**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           GLOBAL NETWORKS                                    │
+│                    (networking.yaml - root level)                           │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │  management (10.10.0.0/16)     ← SSH, monitoring, admin (all zones) │  │
+│   │  backup (10.40.0.0/16)         ← Hub ↔ Zones backup traffic         │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│   WHY GLOBAL: Need to access any zone from anywhere                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ZONE NETWORKS                                      │
+│                    (zones/{zone}/networking.yaml)                           │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │  services (10.50.x.0/24)       ← VyOS, HAProxy, local services      │  │
+│   │  ceph-public (10.20.x.0/24)    ← VM I/O to Ceph                     │  │
+│   │  ceph-cluster (10.21.x.0/24)   ← Ceph replication (MTU 8940)        │  │
+│   │  proxmox-public (10.30.x.0/24) ← Proxmox API/UI                     │  │
+│   │  proxmox-cluster (10.31.x.0/24)← Corosync, live migration           │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│   WHY ZONE: Latency-critical, must stay local (<1ms)                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Separation?
+
+| Network | Scope | Why |
+|---------|-------|-----|
+| management | Global | Admin needs access to all zones from anywhere |
+| backup | Global | Hub pulls backups from all zones |
+| services | Zone | VyOS/HAProxy failover must be instant |
+| ceph-public | Zone | VM I/O latency sensitive |
+| ceph-cluster | Zone | Replication MUST be <1ms |
+| proxmox-public | Zone | API calls stay local |
+| proxmox-cluster | Zone | Corosync breaks at >2ms latency |
+
+### Multi-Zone Example
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                         REGION: EU                                 │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  GLOBAL MESH (spans all zones)                                    │
+│  ════════════════════════════                                     │
+│  management: 10.10.0.0/16  ←──── Admin can reach zone-a & zone-b │
+│  backup: 10.40.0.0/16      ←──── Hub pulls from both zones       │
+│                                                                   │
+│  ┌───────────────────────┐     ┌───────────────────────┐        │
+│  │      ZONE: main       │     │     ZONE: dr          │        │
+│  │     (Paris NVMe)      │     │   (Frankfurt NVMe)    │        │
+│  │                       │     │                       │        │
+│  │ services: 10.50.0.0/24│     │ services: 10.50.1.0/24│        │
+│  │ ceph-pub: 10.20.0.0/24│     │ ceph-pub: 10.20.1.0/24│        │
+│  │ ceph-priv:10.21.0.0/24│     │ ceph-priv:10.21.1.0/24│        │
+│  │ pve-pub:  10.30.0.0/24│     │ pve-pub:  10.30.1.0/24│        │
+│  │ pve-priv: 10.31.0.0/24│     │ pve-priv: 10.31.1.0/24│        │
+│  └───────────────────────┘     └───────────────────────┘        │
+│          │                              │                        │
+│          └──────── NO CROSS-ZONE ───────┘                        │
+│                   ROUTING FOR ZONE                               │
+│                     MESH NETWORKS                                │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+**Key rule:** Zone mesh networks (ceph, proxmox, services) NEVER cross zone boundaries. Each zone has its own isolated instance of these networks.
+
+---
+
 ## The 7 Isolated Networks
 
 ### 1. Management Network (mesh-mgmt)
@@ -1097,19 +1176,29 @@ WHAT CHANGED:
 
 ## Summary
 
-| Network | Subnet | Purpose | Nodes |
-|---------|--------|---------|-------|
-| mesh-mgmt | 10.10.0.0/24 | SSH, monitoring, admin | All |
-| mesh-ceph-pub | 10.20.0.0/24 | VM I/O to Ceph | PVE + OSD |
-| mesh-ceph-priv | 10.21.0.0/24 | Ceph replication | OSD only |
-| mesh-pve-pub | 10.30.0.0/24 | Proxmox API/UI | PVE |
-| mesh-pve-priv | 10.31.0.0/24 | Corosync, migration | PVE |
-| mesh-backup | 10.40.0.0/24 | Backup traffic | PVE + Backup |
-| mesh-services | 10.50.0.0/24 | Public services | Service VMs |
+### Global Networks (networking.yaml)
+
+| Network | Subnet | Purpose | Nodes | Config File |
+|---------|--------|---------|-------|-------------|
+| management | 10.10.0.0/16 | SSH, monitoring, admin | All | networking.yaml |
+| backup | 10.40.0.0/16 | Hub ↔ Zones backup | PVE + Hub | networking.yaml |
+
+### Zone Networks (zones/{zone}/networking.yaml)
+
+| Network | Subnet | Purpose | Nodes | MTU |
+|---------|--------|---------|-------|-----|
+| services | 10.50.x.0/24 | VyOS, HAProxy, local | Service VMs | 1420 |
+| ceph-public | 10.20.x.0/24 | VM I/O to Ceph | PVE + OSD | 1420 |
+| ceph-cluster | 10.21.x.0/24 | Ceph replication | OSD only | 8940 |
+| proxmox-public | 10.30.x.0/24 | Proxmox API/UI | PVE | 1420 |
+| proxmox-cluster | 10.31.x.0/24 | Corosync, migration | PVE | 1420 |
+
+*Note: `x` in subnet = zone index (0 for main, 1 for dr, etc.)*
 
 **Key principles:**
-1. **Isolation:** Each network type has its own WireGuard mesh
-2. **Performance:** NVMe requirement compensates WireGuard overhead
-3. **Freedom:** Provider-agnostic, migrate anytime
-4. **Security:** Encryption everywhere, no plain-text traffic
-5. **Simplicity:** Same architecture regardless of provider
+1. **Scope separation:** Global networks cross zones, zone networks stay local
+2. **Isolation:** Each network type has its own WireGuard mesh
+3. **Performance:** NVMe requirement compensates WireGuard overhead
+4. **Latency:** Zone networks for latency-critical traffic (<1ms)
+5. **Freedom:** Provider-agnostic, migrate anytime
+6. **Security:** Encryption everywhere, no plain-text traffic

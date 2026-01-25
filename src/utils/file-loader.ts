@@ -31,8 +31,12 @@ export function loadPlatform(filePath: string = './platform.yaml'): Platform {
  */
 export function loadLayer<T>(
   platform: Platform,
-  layerName: keyof Platform['layers']
+  layerName: keyof NonNullable<Platform['layers']>
 ): T | null {
+  if (!platform.layers) {
+    return null;
+  }
+
   const layerPath = platform.layers[layerName];
 
   if (!layerPath) {

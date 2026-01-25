@@ -7,11 +7,14 @@ import { VM_ID_RANGES } from "./constants";
 export const INFRASTRUCTURE_REQUIREMENTS = {
   // VM SPECIFICATIONS BY ROLE AND TIER
   vms: {
-    // EDGE (Network Entry)
+    // ═══════════════════════════════════════════════════════════════════════
+    // EDGE (1-99) - Network Entry, per-zone
+    // ═══════════════════════════════════════════════════════════════════════
     vyos: {
       role: "firewall" as const,
-      vm_id_range: "FIREWALL" as const,
+      vm_id_range: "EDGE" as const,
       ha_mechanism: "VRRP",
+      deployed_on: "zone" as const,
       min_count: { local: 1, production: 2, enterprise: 2 },
       specs: {
         local:      { vcpu: 2, ram_gb: 2,  disk_gb: 20 },
@@ -19,58 +22,11 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
         enterprise: { vcpu: 8, ram_gb: 8,  disk_gb: 20 },
       },
     },
-    haproxy: {
-      role: "load_balancer" as const,
-      vm_id_range: "LOAD_BALANCER" as const,
-      ha_mechanism: "Keepalived",
-      min_count: { local: 0, production: 2, enterprise: 2 },
-      specs: {
-        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
-        production: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
-        enterprise: { vcpu: 4, ram_gb: 8,  disk_gb: 20 },
-      },
-    },
-
-    // ZERO-TRUST (Security & Identity)
-    headscale: {
-      role: "bastion" as const,
-      vm_id_range: "BASTION" as const,
-      ha_mechanism: "LB + shared DB",
-      min_count: { local: 1, production: 2, enterprise: 3 },
-      specs: {
-        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
-        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
-        enterprise: { vcpu: 4, ram_gb: 8,  disk_gb: 40 },
-      },
-    },
-    keycloak: {
-      role: "iam_sso" as const,
-      vm_id_range: "IAM_SSO" as const,
-      ha_mechanism: "Infinispan cluster",
-      min_count: { local: 1, production: 2, enterprise: 3 },
-      specs: {
-        local:      { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
-        production: { vcpu: 4, ram_gb: 8,  disk_gb: 40 },
-        enterprise: { vcpu: 4, ram_gb: 16, disk_gb: 60 },
-      },
-    },
-    openbao: {
-      role: "secrets" as const,
-      vm_id_range: "SECRETS" as const,
-      ha_mechanism: "Raft consensus",
-      min_count: { local: 1, production: 2, enterprise: 3 },
-      specs: {
-        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
-        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
-        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
-      },
-    },
-
-    // DNS
     dnsdist: {
       role: "dns_lb" as const,
-      vm_id_range: "DNS_LB" as const,
+      vm_id_range: "EDGE" as const,
       ha_mechanism: "Keepalived",
+      deployed_on: "global" as const,
       min_count: { local: 0, production: 2, enterprise: 2 },
       specs: {
         local:      { vcpu: 1, ram_gb: 1,  disk_gb: 10 },
@@ -80,8 +36,9 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
     },
     powerdns: {
       role: "dns_server" as const,
-      vm_id_range: "DNS_SERVER" as const,
+      vm_id_range: "EDGE" as const,
       ha_mechanism: "LB + shared DB",
+      deployed_on: "global" as const,
       min_count: { local: 1, production: 2, enterprise: 3 },
       specs: {
         local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
@@ -90,11 +47,78 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
       },
     },
 
-    // DATA (Databases)
+    // ═══════════════════════════════════════════════════════════════════════
+    // SECURITY (100-199) - Zero-trust, global
+    // ═══════════════════════════════════════════════════════════════════════
+    headscale: {
+      role: "bastion" as const,
+      vm_id_range: "SECURITY" as const,
+      ha_mechanism: "LB + shared DB",
+      deployed_on: "global" as const,
+      min_count: { local: 1, production: 2, enterprise: 3 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        enterprise: { vcpu: 4, ram_gb: 8,  disk_gb: 40 },
+      },
+    },
+    teleport: {
+      role: "ssh_bastion" as const,
+      vm_id_range: "SECURITY" as const,
+      ha_mechanism: "LB + shared DB",
+      deployed_on: "global" as const,
+      min_count: { local: 0, production: 2, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+      },
+    },
+    crowdsec: {
+      role: "ids" as const,
+      vm_id_range: "SECURITY" as const,
+      ha_mechanism: "Local API + Central API",
+      deployed_on: "global" as const,
+      min_count: { local: 0, production: 1, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+      },
+    },
+    openbao: {
+      role: "secrets" as const,
+      vm_id_range: "SECURITY" as const,
+      ha_mechanism: "Raft consensus",
+      deployed_on: "global" as const,
+      min_count: { local: 1, production: 3, enterprise: 3 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+      },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // IAM & DATA (200-299) - Identity & databases, global
+    // ═══════════════════════════════════════════════════════════════════════
+    keycloak: {
+      role: "iam_sso" as const,
+      vm_id_range: "IAM_DATA" as const,
+      ha_mechanism: "Infinispan cluster",
+      deployed_on: "global" as const,
+      min_count: { local: 1, production: 2, enterprise: 3 },
+      specs: {
+        local:      { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        production: { vcpu: 4, ram_gb: 8,  disk_gb: 40 },
+        enterprise: { vcpu: 4, ram_gb: 16, disk_gb: 60 },
+      },
+    },
     postgresql: {
       role: "database" as const,
-      vm_id_range: "DATABASE" as const,
+      vm_id_range: "IAM_DATA" as const,
       ha_mechanism: "Patroni + etcd",
+      deployed_on: "global" as const,
       min_count: { local: 1, production: 3, enterprise: 3 },
       specs: {
         local:      { vcpu: 2, ram_gb: 4,   disk_gb: 50 },
@@ -104,8 +128,9 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
     },
     redis: {
       role: "cache" as const,
-      vm_id_range: "CACHE" as const,
+      vm_id_range: "IAM_DATA" as const,
       ha_mechanism: "Sentinel",
+      deployed_on: "global" as const,
       min_count: { local: 0, production: 3, enterprise: 3 },
       specs: {
         local:      { vcpu: 1, ram_gb: 2,  disk_gb: 10 },
@@ -114,11 +139,14 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
       },
     },
 
-    // MONITORING
+    // ═══════════════════════════════════════════════════════════════════════
+    // OBSERVABILITY (300-399) - Monitoring & logging
+    // ═══════════════════════════════════════════════════════════════════════
     prometheus: {
       role: "monitoring" as const,
-      vm_id_range: "MONITORING" as const,
+      vm_id_range: "OBSERVABILITY" as const,
       ha_mechanism: "Dual scrape",
+      deployed_on: "region" as const,
       min_count: { local: 0, production: 2, enterprise: 2 },
       specs: {
         local:      { vcpu: 2, ram_gb: 4,   disk_gb: 50 },
@@ -126,21 +154,11 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
         enterprise: { vcpu: 4, ram_gb: 32,  disk_gb: 200 },
       },
     },
-    alertmanager: {
-      role: "alerting" as const,
-      vm_id_range: "ALERTING" as const,
-      ha_mechanism: "Gossip cluster",
-      min_count: { local: 0, production: 2, enterprise: 3 },
-      specs: {
-        local:      { vcpu: 1, ram_gb: 1,  disk_gb: 10 },
-        production: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
-        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
-      },
-    },
     grafana: {
       role: "dashboards" as const,
-      vm_id_range: "DASHBOARDS" as const,
+      vm_id_range: "OBSERVABILITY" as const,
       ha_mechanism: "LB + shared DB",
+      deployed_on: "global" as const,
       min_count: { local: 0, production: 2, enterprise: 2 },
       specs: {
         local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
@@ -148,12 +166,11 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
         enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
       },
     },
-
-    // LOGGING & SECURITY
     loki: {
       role: "logging" as const,
-      vm_id_range: "LOGGING" as const,
+      vm_id_range: "OBSERVABILITY" as const,
       ha_mechanism: "Memberlist",
+      deployed_on: "region" as const,
       min_count: { local: 0, production: 2, enterprise: 3 },
       specs: {
         local:      { vcpu: 2, ram_gb: 4,   disk_gb: 50 },
@@ -161,10 +178,35 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
         enterprise: { vcpu: 4, ram_gb: 16,  disk_gb: 200 },
       },
     },
+    alertmanager: {
+      role: "alerting" as const,
+      vm_id_range: "OBSERVABILITY" as const,
+      ha_mechanism: "Gossip cluster",
+      deployed_on: "region" as const,
+      min_count: { local: 0, production: 2, enterprise: 3 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 1,  disk_gb: 10 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
+      },
+    },
+    uptime_kuma: {
+      role: "status_page" as const,
+      vm_id_range: "OBSERVABILITY" as const,
+      ha_mechanism: null,
+      deployed_on: "global" as const,
+      min_count: { local: 0, production: 1, enterprise: 1 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 1,  disk_gb: 10 },
+        production: { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        enterprise: { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+      },
+    },
     wazuh: {
       role: "siem" as const,
-      vm_id_range: "SIEM" as const,
+      vm_id_range: "OBSERVABILITY" as const,
       ha_mechanism: "Cluster mode",
+      deployed_on: "region" as const,
       min_count: { local: 0, production: 1, enterprise: 2 },
       specs: {
         local:      { vcpu: 2, ram_gb: 4,  disk_gb: 50 },
@@ -173,11 +215,74 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
       },
     },
 
-    // TOOLS
+    // ═══════════════════════════════════════════════════════════════════════
+    // INFRA (400-499) - Load balancing & tools
+    // ═══════════════════════════════════════════════════════════════════════
+    haproxy_edge: {
+      role: "load_balancer" as const,
+      vm_id_range: "INFRA" as const,
+      ha_mechanism: "Keepalived",
+      deployed_on: "zone" as const,
+      min_count: { local: 0, production: 2, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
+        enterprise: { vcpu: 4, ram_gb: 8,  disk_gb: 20 },
+      },
+    },
+    haproxy_k8s: {
+      role: "load_balancer" as const,
+      vm_id_range: "INFRA" as const,
+      ha_mechanism: "Keepalived",
+      deployed_on: "zone" as const,
+      min_count: { local: 0, production: 2, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 20 },
+      },
+    },
+    soverstack: {
+      role: "management" as const,
+      vm_id_range: "INFRA" as const,
+      ha_mechanism: null,
+      deployed_on: "global" as const,
+      min_count: { local: 1, production: 1, enterprise: 1 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
+      },
+    },
+    gitea: {
+      role: "git_server" as const,
+      vm_id_range: "INFRA" as const,
+      ha_mechanism: "LB + shared DB",
+      deployed_on: "global" as const,
+      min_count: { local: 0, production: 1, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
+        production: { vcpu: 2, ram_gb: 4,  disk_gb: 50 },
+        enterprise: { vcpu: 2, ram_gb: 4,  disk_gb: 100 },
+      },
+    },
+    harbor: {
+      role: "registry" as const,
+      vm_id_range: "INFRA" as const,
+      ha_mechanism: "LB + shared storage",
+      deployed_on: "global" as const,
+      min_count: { local: 0, production: 1, enterprise: 2 },
+      specs: {
+        local:      { vcpu: 2, ram_gb: 4,   disk_gb: 50 },
+        production: { vcpu: 4, ram_gb: 8,   disk_gb: 200 },
+        enterprise: { vcpu: 4, ram_gb: 8,   disk_gb: 500 },
+      },
+    },
     pentest: {
       role: "pentest" as const,
-      vm_id_range: "TOOLS" as const,
+      vm_id_range: "INFRA" as const,
       ha_mechanism: null,
+      deployed_on: "global" as const,
       min_count: { local: 0, production: 0, enterprise: 1 },
       specs: {
         local:      { vcpu: 2, ram_gb: 4,  disk_gb: 40 },
@@ -185,15 +290,32 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
         enterprise: { vcpu: 4, ram_gb: 8,  disk_gb: 80 },
       },
     },
-    soverstack: {
-      role: "management" as const,
-      vm_id_range: "TOOLS" as const,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BACKUP (1000-1999) - Hub only
+    // ═══════════════════════════════════════════════════════════════════════
+    pbs: {
+      role: "backup_server" as const,
+      vm_id_range: "BACKUP" as const,
       ha_mechanism: null,
-      min_count: { local: 1, production: 1, enterprise: 1 },
+      deployed_on: "hub" as const,
+      min_count: { local: 0, production: 1, enterprise: 2 },
       specs: {
-        local:      { vcpu: 1, ram_gb: 2,  disk_gb: 20 },
-        production: { vcpu: 1, ram_gb: 2,  disk_gb: 40 },
-        enterprise: { vcpu: 1, ram_gb: 2,  disk_gb: 40 },
+        local:      { vcpu: 2, ram_gb: 4,   disk_gb: 100 },
+        production: { vcpu: 4, ram_gb: 8,   disk_gb: 500 },
+        enterprise: { vcpu: 4, ram_gb: 16,  disk_gb: 1000 },
+      },
+    },
+    minio: {
+      role: "object_storage" as const,
+      vm_id_range: "BACKUP" as const,
+      ha_mechanism: "Distributed mode",
+      deployed_on: "hub" as const,
+      min_count: { local: 0, production: 1, enterprise: 4 },
+      specs: {
+        local:      { vcpu: 2, ram_gb: 4,   disk_gb: 100 },
+        production: { vcpu: 4, ram_gb: 8,   disk_gb: 500 },
+        enterprise: { vcpu: 4, ram_gb: 16,  disk_gb: 1000 },
       },
     },
   },
@@ -207,28 +329,51 @@ export const INFRASTRUCTURE_REQUIREMENTS = {
     { name: "openbao",    owner: "openbao",    purpose: "Secrets audit logs" },
   ],
 
-  // ROLE TO VM_ID_RANGE MAPPING
+  // ROLE TO VM_ID_RANGE MAPPING (simplified by group)
   role_to_range: {
-    firewall: "FIREWALL",
-    bastion: "BASTION",
-    secrets: "SECRETS",
-    iam_sso: "IAM_SSO",
-    database: "DATABASE",
-    cache: "CACHE",
-    monitoring: "MONITORING",
-    alerting: "ALERTING",
-    dashboards: "DASHBOARDS",
-    logging: "LOGGING",
-    siem: "SIEM",
-    load_balancer: "LOAD_BALANCER",
-    dns_lb: "DNS_LB",
-    dns_server: "DNS_SERVER",
-    pentest: "TOOLS",
-    management: "TOOLS",
+    // Edge (1-99)
+    firewall: "EDGE",
+    dns_lb: "EDGE",
+    dns_server: "EDGE",
+    // Security (100-199)
+    bastion: "SECURITY",
+    ssh_bastion: "SECURITY",
+    ids: "SECURITY",
+    secrets: "SECURITY",
+    // IAM & Data (200-299)
+    iam_sso: "IAM_DATA",
+    database: "IAM_DATA",
+    cache: "IAM_DATA",
+    // Observability (300-399)
+    monitoring: "OBSERVABILITY",
+    alerting: "OBSERVABILITY",
+    dashboards: "OBSERVABILITY",
+    logging: "OBSERVABILITY",
+    status_page: "OBSERVABILITY",
+    siem: "OBSERVABILITY",
+    // Infra (400-499)
+    load_balancer: "INFRA",
+    management: "INFRA",
+    git_server: "INFRA",
+    registry: "INFRA",
+    pentest: "INFRA",
+    ci_runner: "INFRA",
+    // Kubernetes (500-999)
     k8s_master: "K8S_MASTER",
     k8s_worker: "K8S_WORKER",
-    ci_runner: "CI_CD",
+    // Backup (1000-1999)
+    backup_server: "BACKUP",
+    object_storage: "BACKUP",
+    // Apps (2000+)
     general_purpose: "APPLICATIONS",
+  } as const,
+
+  // DEPLOYMENT LOCATION BY SERVICE
+  deployment_location: {
+    global: ["headscale", "teleport", "crowdsec", "keycloak", "openbao", "dnsdist", "powerdns", "postgresql", "redis", "grafana", "uptime_kuma", "soverstack", "gitea", "harbor", "pentest"],
+    region: ["prometheus", "alertmanager", "loki", "wazuh"],
+    hub: ["pbs", "minio"],
+    zone: ["vyos", "haproxy_edge", "haproxy_k8s"],
   } as const,
 } as const;
 

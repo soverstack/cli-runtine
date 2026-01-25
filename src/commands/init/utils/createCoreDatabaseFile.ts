@@ -1,109 +1,104 @@
-import { InitOptions } from "./index";
+import { InitOptions, getPrimaryZone } from "./index";
 import fs from "fs";
 import path from "path";
 
 /**
- * Creates core-database.yaml with the PostgreSQL cluster definition
- * and infrastructure databases (keycloak, headscale, etc.)
+ * Creates the GLOBAL core-database.yaml file.
  *
- * Structure: DatabasesLayer with one DatabaseCluster
+ * Contains PostgreSQL cluster CONFIGURATION.
+ * VMs are defined in core-compute.yaml (IAM_DATA group 200-299).
+ *
+ * This file only references vm_ids - actual VMs are in core-compute.yaml
+ *
+ * NOTE: Redis is NOT included by default.
+ * Services use built-in alternatives:
+ *   - Keycloak: Infinispan (embedded)
+ *   - Grafana: PostgreSQL sessions
+ *   - Headscale: works without cache
  */
-export const createCoreDatabaseFile = ({
-  projectName,
-  infrastructureTier,
-  outputDir,
-}: InitOptions): void => {
+export const createCoreDatabaseFile = (options: InitOptions): void => {
+  const { projectName, infrastructureTier, outputDir } = options;
   const targetDir = outputDir || path.resolve(process.cwd(), projectName);
-  const filePath = path.join(targetDir, "core-database.yaml");
+  const filePath = path.join(targetDir, "database.yaml");
 
   const isLocal = infrastructureTier === "local";
-  const vmIds = isLocal ? "250" : "250, 251, 252";
   const haEnabled = !isLocal;
 
-  const content = `# ============================================================
-# CORE DATABASE - PostgreSQL Cluster + Infrastructure Databases
-# ============================================================
+  const content = `# ════════════════════════════════════════════════════════════════════════════
+# GLOBAL DATABASE CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════
 #
-# This file defines the main PostgreSQL cluster and infrastructure databases.
-# Application clusters can be added in database.yaml (clusters are merged).
+# Database cluster configurations shared by ALL services.
 #
-# Documentation: https://docs.soverstack.io/layers/database
+# IMPORTANT: VMs are defined in core-compute.yaml (IAM_DATA group 200-299)
+# This file only contains cluster configuration with vm_ids references.
 #
-# MULTI-FILE MERGE:
-# In platform.yaml:
-#   database: "core-database.yaml, database.yaml"
+# VM IDs used (from core-compute.yaml):
+#   PostgreSQL: ${isLocal ? "250" : "250, 251, 252"}
 #
-# The 'clusters' arrays from all files will be merged (concatenated).
+# NOTE: Redis is NOT included by default. Services use built-in alternatives:
+#   - Keycloak: Infinispan (embedded, no external cache needed)
+#   - Grafana: PostgreSQL for sessions
+#   - Headscale: works without external cache
 #
-# ============================================================
+# ════════════════════════════════════════════════════════════════════════════
 
 clusters:
-  # ----------------------------------------------------------
-  # CORE INFRASTRUCTURE CLUSTER
-  # ----------------------------------------------------------
-  # Main PostgreSQL cluster for infrastructure services.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # POSTGRESQL CLUSTER
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Shared by all services - each service gets its own database
   #
-  # REQUIREMENTS FOR ${isLocal ? "LOCAL" : "PRODUCTION/ENTERPRISE"}:
-  # - Minimum ${isLocal ? "1" : "3"} VM(s) ${isLocal ? "" : "for HA (odd number for Patroni quorum)"}
-  # - VMs defined in core-compute.yaml (vm_ids: 250-279)
-  # - SSL enforced for production
-  #
-  - name: core-infrastructure   # Unique cluster identifier
+  - name: main
     type: postgresql
-    version: "16"               # Supported: 14, 15, 16
+    version: "16"
 
     cluster:
-      name: main                # Patroni cluster name
+      name: main
       ha: ${haEnabled}
-      vm_ids: [${vmIds}]        # References core-compute.yaml
-      # read_replicas_vm_ids: [] # Optional: for read scaling
+      vm_ids:
+${isLocal ? `        - 250` : `        - 250
+        - 251
+        - 252`}
 
     port: 5432
-    ssl: ${isLocal ? "preferred" : "required"}  # required | preferred | disabled
+    ssl: ${isLocal ? "preferred" : "required"}
 
-    # Infrastructure databases (required by Soverstack core services)
+    # Infrastructure databases (isolated per service)
     databases:
-      # Soverstack - Runtime state and configuration
       - name: soverstack
         owner: soverstack
-
-      # Keycloak - Identity and Access Management
       - name: keycloak
         owner: keycloak
-
-      # Headscale - VPN coordination server
       - name: headscale
         owner: headscale
-
-      # PowerDNS - Authoritative DNS server
       - name: powerdns
         owner: powerdns
-
-      # OpenBao/Vault - Secrets management audit logs
-      - name: openbao
-        owner: openbao
-
-      # Grafana - Dashboards and alerting
+      - name: vault
+        owner: vault
       - name: grafana
         owner: grafana
 
-    # Credentials - NEVER store in plain text!
+
     credentials:
       type: env
-      var_name: POSTGRES_PASSWORD
-      # Alternative: Vault (recommended for production)
-      # type: vault
-      # path: secret/data/database/postgres
+      var_name: POSTGRES_ADMIN_PASSWORD
 
-    # Backup configuration
+    pooler:
+      enabled: true
+      mode: transaction
+      max_client_connections: 1000
+
     backup:
-      storage_backend: backup-main  # Reference to storage_backends in datacenter.yaml
-      schedule: "0 2 * * *"         # Cron: Daily at 2 AM
+      enabled: true
+      storage_backend: hub
+      schedule: "0 */4 * * *"
       retention:
         daily: 7
         weekly: 4
-        monthly: 12
-      type: pg_dumpall              # pg_dumpall | wal_archive (for PITR)
+        monthly: 6
+      type: wal_archive
 `;
 
   fs.writeFileSync(filePath, content);

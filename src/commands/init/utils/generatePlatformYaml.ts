@@ -1,99 +1,128 @@
-import { InitOptions } from "./index";
+import { InitOptions, getPrimaryRegion, getPrimaryZone } from "./index";
 import fs from "fs";
 import path from "path";
-import { isMultiDcFunc } from "../logic";
 
-export const generatePlatformYaml = ({
-  projectName,
-  domain,
-  infrastructureTier,
-  outputDir,
-  datacenters,
-}: InitOptions): void => {
+export const generatePlatformYaml = (options: InitOptions): void => {
+  const {
+    projectName,
+    domain,
+    infrastructureTier,
+    complianceLevel,
+    outputDir,
+    regions,
+  } = options;
+
   const tier = infrastructureTier || "production";
+  const compliance = complianceLevel || "startup";
   const finalDomain = domain || "example.com";
   const targetDir = outputDir || path.resolve(process.cwd(), projectName);
   const filePath = path.join(targetDir, "platform.yaml");
 
-  const isMultiDc = isMultiDcFunc(datacenters);
+  const primaryRegionName = options.primaryRegion || getPrimaryRegion(options).name;
+  const primaryZoneName = options.primaryZone || getPrimaryZone(options);
 
-  const content = isMultiDc
-    ? generateMultiDcPlatformYaml(projectName, tier, finalDomain, datacenters!)
-    : generateSingleDcPlatformYaml(projectName, tier, finalDomain);
-
-  fs.writeFileSync(filePath, content);
-};
-
-/**
- * Single DC: all layers in same directory
- */
-const generateSingleDcPlatformYaml = (projectName: string, tier: string, domain: string): string => {
-  return `# ============================================================
-# SOVERSTACK PLATFORM CONFIGURATION
-# ============================================================
-version: "1.0.0"
-project_name: "${projectName}"
-domain: "${domain}"
-infrastructure_tier: "${tier}"
-
-# LAYERS - All paths relative to this file
-# Multi-file merge: use comma-separated paths (e.g., "file1.yaml, file2.yaml")
-layers:
-  datacenter: "./datacenter.yaml"
-  compute: "./core-compute.yaml, ./compute.yaml"       # Core VMs + your VMs
-  database: "./core-database.yaml, ./database.yaml"    # Core DBs + your DBs
-  networking: "./networking.yaml"
-  security: "./security.yaml"
-  observability: "./observability.yaml"
-
-ssh: "./ssh_config.yaml"
-
-state:
-  backend: "local"
-  path: "./.soverstack/state"
-`;
-};
-
-/**
- * Multi-DC: full datacenter configs with explicit paths
- */
-const generateMultiDcPlatformYaml = (
-  projectName: string,
-  tier: string,
-  domain: string,
-  datacenters: string[]
-): string => {
-  const dcList = datacenters
-    .map((dc, i) => {
-      const primary = i === 0 ? "\n    primary: true" : "";
-      const p = `./datacenters/${dc}`;
-      return `  - name: ${dc}${primary}
-    layers:
-      datacenter: "${p}/datacenter.yaml"
-      compute: "${p}/core-compute.yaml, ${p}/compute.yaml"
-      database: "${p}/core-database.yaml, ${p}/database.yaml"
-      networking: "${p}/networking.yaml"
-      security: "${p}/security.yaml"
-      observability: "${p}/observability.yaml"
-    ssh: "${p}/ssh_config.yaml"`;
-    })
+  // Generate regions list
+  const regionsYaml = (regions || [{ name: "eu", zones: ["main"] }])
+    .map(
+      (r) => `  - name: ${r.name}
+    path: ./regions/${r.name}/region.yaml`
+    )
     .join("\n\n");
 
-  return `# ============================================================
-# SOVERSTACK PLATFORM CONFIGURATION - MULTI-DATACENTER
-# ============================================================
+  const content = `# ════════════════════════════════════════════════════════════════════════════
+# SOVERSTACK PLATFORM CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════
+#
+# QUICK START:
+#   1. Fill .env with passwords
+#   2. Edit regions/${primaryRegionName}/zones/${primaryZoneName}/networking.yaml → add public IPs
+#   3. soverstack validate platform.yaml
+#   4. soverstack apply platform.yaml
+#
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Project Structure:
+#
+#   platform.yaml           ← You are here
+#   .env                    ← Passwords (NEVER COMMIT)
+#   │
+#   ├── services/           ← Global services
+#   │   ├── orchestrator.yaml
+#   │   ├── security.yaml
+#   │   ├── networking.yaml
+#   │   └── observability.yaml
+#   │
+#   ├── compute.yaml        ← VM specifications
+#   ├── database.yaml       ← PostgreSQL config
+#   │
+#   ├── apps/               ← Optional: customize apps
+#   │
+#   └── regions/
+#       └── {region}/
+#           ├── region.yaml
+#           ├── security.yaml       (Teleport, Wazuh)
+#           ├── observability.yaml  (Prometheus, Loki)
+#           ├── compute.yaml
+#           │
+#           ├── hub/                (Backup - optional)
+#           │   ├── datacenter.yaml
+#           │   ├── networking.yaml
+#           │   └── compute.yaml
+#           │
+#           └── zones/{zone}/       (Production)
+#               ├── datacenter.yaml
+#               ├── networking.yaml
+#               └── compute.yaml
+#
+# ════════════════════════════════════════════════════════════════════════════
+
 version: "1.0.0"
 project_name: "${projectName}"
-domain: "${domain}"
-infrastructure_tier: "${tier}"
+domain: "${finalDomain}"                  # REQUIRED - your domain
 
-# DATACENTERS
-# All paths are explicit - no magic
-datacenters:
-${dcList}
+# ════════════════════════════════════════════════════════════════════════════
+# TIER
+# ════════════════════════════════════════════════════════════════════════════
+
+infrastructure_tier: "${tier}"            # local | production | enterprise
+
+# ════════════════════════════════════════════════════════════════════════════
+# CONTROL PLANE
+# ════════════════════════════════════════════════════════════════════════════
+# Where global services run (Vault, Keycloak, Grafana, PostgreSQL...)
+
+control_plane:
+  region: ${primaryRegionName}
+  zone: ${primaryZoneName}
+
+# ════════════════════════════════════════════════════════════════════════════
+# GLOBAL SERVICES
+# ════════════════════════════════════════════════════════════════════════════
+
+services:
+  orchestrator: ./services/orchestrator.yaml
+  security: ./services/security.yaml
+  networking: ./services/networking.yaml
+  observability: ./services/observability.yaml
+
+compute: ./compute.yaml
+database: ./database.yaml
+
+# ════════════════════════════════════════════════════════════════════════════
+# REGIONS
+# ════════════════════════════════════════════════════════════════════════════
+
+regions:
+${regionsYaml}
+
+# ════════════════════════════════════════════════════════════════════════════
+# STATE
+# ════════════════════════════════════════════════════════════════════════════
 
 state:
-  backend: "local"
-  path: "./.soverstack"
+  backend: local                          # local | s3 | postgres
+  path: ./.soverstack
 `;
+
+  fs.writeFileSync(filePath, content);
 };

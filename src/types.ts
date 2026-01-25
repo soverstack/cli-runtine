@@ -46,25 +46,33 @@ export type VMRole =
   | "dns_server"
   | "load_balancer"
   // ZERO-TRUST & SECURITY
-  | "bastion"
-  | "secrets"
-  | "iam_sso"
+  | "bastion"           // Headscale VPN
+  | "ssh_bastion"       // Teleport SSH
+  | "secrets"           // OpenBao/Vault
+  | "iam_sso"           // Keycloak
+  | "ids"               // CrowdSec
   // DATA
-  | "database"
-  | "cache"
+  | "database"          // PostgreSQL
+  | "cache"             // Redis
   // OBSERVABILITY
-  | "monitoring"
-  | "alerting"
-  | "dashboards"
-  | "logging"
-  | "siem"
+  | "monitoring"        // Prometheus
+  | "alerting"          // Alertmanager
+  | "dashboards"        // Grafana
+  | "logging"           // Loki
+  | "siem"              // Wazuh, Falco
+  | "status_page"       // Uptime Kuma
+  // BACKUP (Hub)
+  | "backup_server"     // PBS
+  | "object_storage"    // MinIO
   // KUBERNETES
   | "k8s_master"
   | "k8s_worker"
   // TOOLS
   | "pentest"
-  | "management"
+  | "management"        // Soverstack orchestrator
   | "ci_runner"
+  | "git_server"        // Gitea
+  | "registry"          // Harbor
   // OTHER
   | "general_purpose"
   | "template";
@@ -77,7 +85,11 @@ export type LayerType =
   | "networking"
   | "security"
   | "observability"
-  | "apps";
+  | "apps"
+  | "region"
+  | "hub"
+  | "zone"
+  | "backup";
 
 export type UserGroupType = "sudo" | "docker" | "kvm" | "systemd-journal" | "adm";
 
@@ -95,7 +107,7 @@ export type CredentialRef =
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Layer paths configuration
+ * Layer paths configuration (legacy single-DC mode)
  * All paths are relative to the datacenter directory
  */
 export interface LayerPaths {
@@ -110,7 +122,7 @@ export interface LayerPaths {
 }
 
 /**
- * Datacenter configuration in multi-DC mode
+ * Datacenter configuration in multi-DC mode (legacy)
  * Path is NOT stored - it's derived from name: ./datacenters/{name}/
  */
 export interface DatacenterEntry {
@@ -120,17 +132,114 @@ export interface DatacenterEntry {
   ssh?: string;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// NEW STRUCTURE: REGIONS / HUB / ZONES
+// ───────────────────────────────────────────────────────────────────────────
+
 /**
- * Platform configuration
+ * Control plane location - where global VMs and databases run
+ */
+export interface ControlPlaneLocation {
+  region: string;
+  zone: string;
+}
+
+/**
+ * Region reference in platform.yaml
+ */
+export interface RegionRef {
+  name: string;
+  path: string;  // e.g., "./regions/eu/region.yaml"
+}
+
+/**
+ * Hub configuration (backup infrastructure)
+ * Contains PBS (Proxmox Backup Server) and MinIO for backups
+ */
+export interface HubConfig {
+  name: string;
+  path?: string;  // e.g., "./hub/cluster.yaml"
+  backup?: BackupConfig;
+  compute?: string;  // VMs for PBS, MinIO
+}
+
+/**
+ * Zone configuration (production Proxmox cluster)
+ */
+export interface ZoneConfig {
+  name: string;
+  path?: string;  // e.g., "./zones/main/datacenter.yaml"
+  datacenter?: string;
+  networking?: string;
+  compute?: string;
+}
+
+/**
+ * Region configuration
+ * Contains: services config + hub (backup) + zones (production)
+ */
+export interface RegionConfig {
+  name: string;
+  deployed_on: string;  // Zone name where regional VMs are deployed
+
+  // Regional configs
+  observability?: string;
+  compute?: string;  // Regional VMs (Prometheus, Loki, etc.)
+
+  // Hub (backup infrastructure)
+  hub?: HubConfig;
+
+  // Zones (production Proxmox clusters)
+  zones: ZoneConfig[];
+}
+
+/**
+ * Backup configuration
+ */
+export interface BackupConfig {
+  pbs?: {
+    enabled: boolean;
+    vm_ids?: number[];
+    schedule: string;  // e.g., "0 */30 * * * *" (every 30min)
+    retention: {
+      hourly: number;
+      daily: number;
+      weekly: number;
+      monthly: number;
+    };
+  };
+  minio?: {
+    enabled: boolean;
+    vm_ids?: number[];
+    bucket_prefix?: string;
+  };
+}
+
+/**
+ * Compliance configuration
+ */
+export interface ComplianceConfig {
+  level: ComplianceLevel;
+  regulations?: RegulationType[];
+}
+
+/**
+ * Platform configuration (NEW structure with regions)
  *
- * Single DC mode:
- *   - Use `layers` directly
- *   - Files in project root
- *
- * Multi-DC mode:
- *   - Use `datacenters` array (just names)
- *   - Files in ./datacenters/{name}/
- *   - Standard layer files per DC (convention over configuration)
+ * Structure:
+ *   platform.yaml             <- Root config
+ *   ├── orchestrator.yaml     # Global: API, PDM, Gitea, Harbor
+ *   ├── security.yaml         # Global: Vault, Keycloak, Teleport
+ *   ├── networking.yaml       # Global: Headscale, PowerDNS
+ *   ├── observability.yaml    # Global: Grafana, Uptime Kuma
+ *   ├── core-compute.yaml     # Global VMs
+ *   ├── core-database.yaml    # Global DB (PostgreSQL)
+ *   └── regions/
+ *       └── {region}/
+ *           ├── region.yaml
+ *           ├── core-compute.yaml  # Regional VMs (Prometheus, Loki)
+ *           ├── hub/               # Backup infrastructure
+ *           └── zones/{zone}/      # Production clusters
  */
 export interface Platform {
   project_name: string;
@@ -139,15 +248,36 @@ export interface Platform {
   environment?: string;
   infrastructure_tier: InfrastructureTierType;
 
-  // Single DC mode: layers in project root
-  layers?: LayerPaths;
+  // Compliance
+  compliance?: ComplianceConfig;
 
-  // Multi-DC mode: array of datacenter configs
-  // Path derived from name: ./datacenters/{name}/
+  // ════════════════════════════════════════════════════════════════════════
+  // GLOBAL SERVICES (unique across all regions)
+  // VMs/DBs deployed on control_plane_runs_on zone
+  // ════════════════════════════════════════════════════════════════════════
+  orchestrator?: string;    // ./orchestrator.yaml
+  security?: string;        // ./security.yaml
+  networking?: string;      // ./networking.yaml
+  observability?: string;   // ./observability.yaml
+  compute?: string;         // ./core-compute.yaml (global VMs)
+  database?: string;        // ./core-database.yaml (global DB)
+  ssh?: string;             // ./ssh_config.yaml
+
+  // Where global VMs and databases run
+  control_plane_runs_on?: ControlPlaneLocation;
+
+  // ════════════════════════════════════════════════════════════════════════
+  // REGIONS (new structure)
+  // ════════════════════════════════════════════════════════════════════════
+  regions?: RegionRef[];
+
+  // ════════════════════════════════════════════════════════════════════════
+  // LEGACY: Single DC mode / Multi-DC mode
+  // ════════════════════════════════════════════════════════════════════════
+  layers?: LayerPaths;
   datacenters?: DatacenterEntry[];
 
-  ssh?: string;
-
+  // State management
   state: {
     backend: BackendType;
     path: string;
@@ -400,7 +530,29 @@ export interface FirewallConfig {
 export interface SecurityConfig {
   vault?: VaultConfig;
   sso?: SSOConfig;
+  teleport?: TeleportConfig;
+  crowdsec?: CrowdSecConfig;
   cert_manager?: CertManagerConfig;
+}
+
+export interface TeleportConfig {
+  enabled: boolean;
+  deployment: "vm";
+  vm_ids?: number[];
+  subdomain?: string;
+  accessible_outside_vpn?: boolean;
+  database?: string;
+}
+
+export interface CrowdSecConfig {
+  enabled: boolean;
+  deployment: "vm";
+  vm_ids?: number[];
+  bouncers?: {
+    traefik?: boolean;
+    haproxy?: boolean;
+    firewall?: boolean;
+  };
 }
 
 export interface VaultConfig {
@@ -440,6 +592,38 @@ export interface CertManagerConfig {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// ORCHESTRATOR - API, PDM, Git, Registry
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface OrchestratorConfig {
+  soverstack?: {
+    enabled: boolean;
+    vm_ids?: number[];
+    api_subdomain?: string;
+    ui_subdomain?: string;
+    database?: string;
+  };
+  pdm?: {
+    enabled: boolean;        // Proxmox Datacenter Manager
+    vm_ids?: number[];
+    subdomain?: string;
+  };
+  gitea?: {
+    enabled: boolean;
+    vm_ids?: number[];
+    subdomain?: string;
+    database?: string;
+  };
+  harbor?: {
+    enabled: boolean;        // Container registry
+    vm_ids?: number[];
+    subdomain?: string;
+    database?: string;
+    storage_backend?: string;  // MinIO reference
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // OBSERVABILITY - Monitoring, Logging, Alerting
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -467,6 +651,19 @@ export interface ObservabilityConfig {
     enabled: boolean;
     type: "alertmanager";
     vm_ids?: number[];
+  };
+  status_page?: {
+    enabled: boolean;
+    type: "uptime-kuma";
+    vm_ids?: number[];
+    subdomain?: string;
+    accessible_outside_vpn?: boolean;  // Usually true for status page
+  };
+  siem?: {
+    enabled: boolean;
+    type: "wazuh";
+    vm_ids?: number[];
+    retention_days?: number;
   };
   // Compliance configuration - determines automatic security/HA choices
   compliance?: {

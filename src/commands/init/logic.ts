@@ -4,64 +4,61 @@ import chalk from "chalk";
 import ora from "ora";
 
 import {
-  createK8sFile,
   createCoreComputeFile,
-  createDatacenterFile,
   createCoreDatabaseFile,
   createNetworkingFile,
   createSecurityFile,
   createObservabilityFile,
-  createAppsFile,
   createOrchestratorFile,
+  createRegionFile,
+  createRegionalSecurityFile,
   createReadme,
   createGitignore,
+  createAppsReadme,
   InitOptions,
+  RegionConfig,
   generatePlatformYaml,
   generateSshKeys,
-  createSSHConfig,
   createEnv,
-  createEnvForDatacenter,
+  getPrimaryRegion,
+  getPrimaryZone,
 } from "./utils";
 
 /**
- * ProjectInitializer - Supports 2 initialization modes:
+ * ProjectInitializer - New Structure
  *
- * MODE 1: SINGLE DC (default)
- *   project/
- *   ├── platform.yaml
- *   ├── datacenter.yaml
- *   ├── networking.yaml
- *   ├── security.yaml
- *   ├── observability.yaml
- *   ├── ssh_config.yaml
- *   ├── .env
- *   ├── compute/
- *   │   └── core-compute.yaml
- *   ├── database/
- *   │   └── core-database.yaml
- *   └── .soverstack/
- *       ├── state/
- *       ├── logs/
- *       └── cache/
- *
- * MODE 2: MULTI-DC (--dc paris,frankfurt)
- *   project/
- *   ├── platform.yaml           # References all DCs
- *   ├── .env                    # Global env vars
- *   └── datacenters/
- *       ├── paris/
- *       │   ├── datacenter.yaml
- *       │   ├── networking.yaml
- *       │   ├── security.yaml
- *       │   ├── observability.yaml
- *       │   ├── ssh_config.yaml
- *       │   ├── .env
- *       │   ├── compute/
- *       │   │   └── core-compute.yaml
- *       │   └── database/
- *       │       └── core-database.yaml
- *       └── frankfurt/
- *           └── ... (same structure)
+ * project/
+ * ├── platform.yaml              # Root config (START HERE)
+ * ├── .env                       # Secrets (NEVER COMMIT)
+ * │
+ * ├── services/                  # Global services config
+ * │   ├── orchestrator.yaml      # Soverstack, PDM
+ * │   ├── security.yaml          # Vault, Keycloak
+ * │   ├── networking.yaml        # DNS, VPN
+ * │   └── observability.yaml     # Grafana, Uptime Kuma
+ * │
+ * ├── compute.yaml               # Global VMs specs
+ * ├── database.yaml              # PostgreSQL config
+ * │
+ * ├── apps/                      # Optional: app-specific config
+ * │   └── README.md              # How to customize apps
+ * │
+ * └── regions/
+ *     └── {region}/
+ *         ├── region.yaml
+ *         ├── security.yaml          # Teleport, Wazuh
+ *         ├── observability.yaml     # Prometheus, Loki
+ *         ├── compute.yaml           # Regional VMs
+ *         │
+ *         ├── hub/                   # Backup (optional)
+ *         │   ├── datacenter.yaml
+ *         │   ├── networking.yaml
+ *         │   └── compute.yaml
+ *         │
+ *         └── zones/{zone}/          # Production
+ *             ├── datacenter.yaml
+ *             ├── networking.yaml
+ *             └── compute.yaml
  */
 export class ProjectInitializer {
   private projectPath: string;
@@ -70,13 +67,6 @@ export class ProjectInitializer {
   constructor(options: InitOptions) {
     this.options = options;
     this.projectPath = path.resolve(process.cwd(), options.projectName);
-  }
-
-  /**
-   * Check if multiple datacenters are configured
-   */
-  private isMultiDc(): boolean {
-    return isMultiDcFunc(this.options.datacenters);
   }
 
   async initialize(): Promise<void> {
@@ -112,11 +102,15 @@ export class ProjectInitializer {
   private async createDirectoryStructure(): Promise<void> {
     const spinner = ora("Creating directory structure").start();
     try {
-      if (this.isMultiDc()) {
-        this.createMultiDcDirectories();
-      } else {
-        this.createSingleDcDirectories();
-      }
+      // Create services directory (global services config)
+      fs.mkdirSync(path.join(this.projectPath, "services"), { recursive: true });
+
+      // Create apps directory (optional customization)
+      fs.mkdirSync(path.join(this.projectPath, "apps"), { recursive: true });
+
+      // Create regions directory
+      fs.mkdirSync(path.join(this.projectPath, "regions"), { recursive: true });
+
       spinner.succeed("Directory structure created");
     } catch (error) {
       spinner.fail("Failed to create directory structure");
@@ -124,36 +118,65 @@ export class ProjectInitializer {
     }
   }
 
-  /**
-   * MODE 1: Single DC - files at root
-   */
-  private createSingleDcDirectories(): void {
-    fs.mkdirSync(path.join(this.projectPath, "compute"), { recursive: true });
-    fs.mkdirSync(path.join(this.projectPath, "database"), { recursive: true });
-  }
-
-  /**
-   * MODE 2: Multi-DC
-   */
-  private createMultiDcDirectories(): void {
-    const dirs = this.options.datacenters!.flatMap((dc) => [
-      `datacenters/${dc}`,
-      `datacenters/${dc}/compute`,
-      `datacenters/${dc}/database`,
-    ]);
-    dirs.forEach((dir) => {
-      fs.mkdirSync(path.join(this.projectPath, dir), { recursive: true });
-    });
-  }
-
   private async generateLayerFiles(): Promise<void> {
     const spinner = ora("Generating configuration files").start();
     try {
-      if (this.isMultiDc()) {
-        this.generateMultiDcFiles();
-      } else {
-        this.generateSingleDcFiles();
-      }
+      const rootOpts = { ...this.options, outputDir: this.projectPath };
+      const primaryZone = getPrimaryZone(this.options);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // ROOT LEVEL FILES
+      // ═══════════════════════════════════════════════════════════════════
+
+      // platform.yaml (entry point)
+      generatePlatformYaml(rootOpts);
+
+      // .env (secrets)
+      createEnv(rootOpts);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // SERVICES/ (Global service configs)
+      // ═══════════════════════════════════════════════════════════════════
+      const servicesDir = path.join(this.projectPath, "services");
+
+      createOrchestratorFile({ ...rootOpts, outputDir: servicesDir, currentZone: primaryZone });
+      createSecurityFile({ ...rootOpts, outputDir: servicesDir });
+      createObservabilityFile({ ...rootOpts, outputDir: servicesDir });
+      createNetworkingFile({ ...rootOpts, outputDir: servicesDir });
+
+      // ═══════════════════════════════════════════════════════════════════
+      // COMPUTE & DATABASE (Global VMs and DB)
+      // ═══════════════════════════════════════════════════════════════════
+      createCoreComputeFile({ ...rootOpts, currentZone: primaryZone });
+      createCoreDatabaseFile({ ...rootOpts, currentZone: primaryZone });
+
+      // ═══════════════════════════════════════════════════════════════════
+      // APPS/ (Optional customization)
+      // ═══════════════════════════════════════════════════════════════════
+      createAppsReadme(rootOpts);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // REGIONS (regions/{region}/...)
+      // ═══════════════════════════════════════════════════════════════════
+      const regionsDir = path.join(this.projectPath, "regions");
+      const regions = this.options.regions || [{ name: "eu", zones: ["main"] }];
+
+      regions.forEach((regionConfig: RegionConfig) => {
+        createRegionFile({
+          ...rootOpts,
+          regionDir: regionsDir,
+          regionConfig,
+        });
+
+        // Regional security (Teleport, Wazuh - GDPR compliant)
+        createRegionalSecurityFile({
+          projectName: this.options.projectName,
+          infrastructureTier: this.options.infrastructureTier || "production",
+          regionDir: regionsDir,
+          regionConfig,
+        });
+      });
+
       spinner.succeed("Configuration files generated");
     } catch (error) {
       spinner.fail("Failed to generate configuration files");
@@ -161,92 +184,28 @@ export class ProjectInitializer {
     }
   }
 
-  /**
-   * MODE 1: Single DC - all files at root
-   */
-  private generateSingleDcFiles(): void {
-    const opts = { ...this.options, outputDir: this.projectPath };
-    const computeDir = path.join(this.projectPath, "compute");
-    const databaseDir = path.join(this.projectPath, "database");
-
-    // Root level files
-    generatePlatformYaml(opts);
-    createOrchestratorFile(opts);
-    createDatacenterFile(opts);
-    createNetworkingFile(opts);
-    createSecurityFile(opts);
-    createObservabilityFile(opts);
-    createSSHConfig(opts);
-    createEnv(opts);
-
-    // Compute files
-    createCoreComputeFile({ ...opts, outputDir: computeDir });
-
-    // Database files
-    createCoreDatabaseFile({ ...opts, outputDir: databaseDir });
-  }
-
-  /**
-   * MODE 2: Multi-DC
-   * - platform.yaml at root (references datacenters)
-   * - orchestrator.yaml at root (orchestrator is on primary DC only)
-   * - .env at root (global)
-   * - datacenters/<dc>/ each with full layer files
-   */
-  private generateMultiDcFiles(): void {
-    // Root level platform.yaml, orchestrator.yaml and global .env
-    const rootOpts = { ...this.options, outputDir: this.projectPath };
-    generatePlatformYaml(rootOpts);
-    createOrchestratorFile(rootOpts);
-    createEnv(rootOpts);
-
-    // Per-datacenter files
-    this.options.datacenters!.forEach((dc) => {
-      const dcDir = path.join(this.projectPath, "datacenters", dc);
-      const computeDir = path.join(dcDir, "compute");
-      const databaseDir = path.join(dcDir, "database");
-      const dcOpts = { ...this.options, outputDir: dcDir, currentDc: dc };
-
-      // Datacenter-specific files
-      createDatacenterFile(dcOpts);
-      createNetworkingFile(dcOpts);
-      createSecurityFile(dcOpts);
-      createObservabilityFile(dcOpts);
-      createSSHConfig(dcOpts);
-      createEnvForDatacenter(dcDir, dc);
-
-      // Compute files
-      createCoreComputeFile({ ...dcOpts, outputDir: computeDir });
-
-      // Database files
-      createCoreDatabaseFile({ ...dcOpts, outputDir: databaseDir });
-    });
-  }
-
-  /**
-   * Create .env file for a specific datacenter
-   */
-
   private async createSoverstackDirectory(): Promise<void> {
     const spinner = ora("Creating .soverstack directory").start();
     try {
       const soverstackPath = path.join(this.projectPath, ".soverstack");
+      const regions = this.options.regions || [{ name: "eu", zones: ["main"] }];
 
-      if (this.isMultiDc()) {
-        // Multi-DC: .soverstack/<dc>/state/, logs/
-        this.options.datacenters!.forEach((dc) => {
-          fs.mkdirSync(path.join(soverstackPath, dc, "state"), { recursive: true });
-          fs.mkdirSync(path.join(soverstackPath, dc, "logs"), { recursive: true });
-          fs.writeFileSync(path.join(soverstackPath, dc, "state", ".gitkeep"), "");
-          fs.writeFileSync(path.join(soverstackPath, dc, "logs", ".gitkeep"), "");
+      // Create state directories per region/zone
+      regions.forEach((region: RegionConfig) => {
+        // Hub state
+        fs.mkdirSync(path.join(soverstackPath, region.name, "hub", "state"), { recursive: true });
+        fs.mkdirSync(path.join(soverstackPath, region.name, "hub", "logs"), { recursive: true });
+        fs.writeFileSync(path.join(soverstackPath, region.name, "hub", "state", ".gitkeep"), "");
+        fs.writeFileSync(path.join(soverstackPath, region.name, "hub", "logs", ".gitkeep"), "");
+
+        // Zone state
+        region.zones.forEach((zone: string) => {
+          fs.mkdirSync(path.join(soverstackPath, region.name, zone, "state"), { recursive: true });
+          fs.mkdirSync(path.join(soverstackPath, region.name, zone, "logs"), { recursive: true });
+          fs.writeFileSync(path.join(soverstackPath, region.name, zone, "state", ".gitkeep"), "");
+          fs.writeFileSync(path.join(soverstackPath, region.name, zone, "logs", ".gitkeep"), "");
         });
-      } else {
-        // Single DC: .soverstack/state/, logs/
-        fs.mkdirSync(path.join(soverstackPath, "state"), { recursive: true });
-        fs.mkdirSync(path.join(soverstackPath, "logs"), { recursive: true });
-        fs.writeFileSync(path.join(soverstackPath, "state", ".gitkeep"), "");
-        fs.writeFileSync(path.join(soverstackPath, "logs", ".gitkeep"), "");
-      }
+      });
 
       // Cache directory is always at root
       fs.mkdirSync(path.join(soverstackPath, "cache"), { recursive: true });
@@ -260,67 +219,36 @@ export class ProjectInitializer {
   }
 
   private printNextSteps(): void {
-    console.log(chalk.bold("\nNext Steps:\n"));
-    console.log(chalk.gray("1.") + " " + chalk.cyan(`cd ${this.options.projectName}`));
+    const regions = this.options.regions || [{ name: "eu", zones: ["main"] }];
+    const primaryRegion = getPrimaryRegion(this.options);
+    const primaryZone = getPrimaryZone(this.options);
 
-    if (this.isMultiDc()) {
-      this.printNextStepsMultiDc();
-    } else {
-      this.printNextStepsSingleDc();
-    }
+    console.log(chalk.bold("Quick Start:\n"));
+    console.log(chalk.white("  1. ") + chalk.cyan(`cd ${this.options.projectName}`));
+    console.log(chalk.white("  2. ") + "Edit " + chalk.cyan(".env") + " → Fill in passwords");
+    console.log(chalk.white("  3. ") + "Edit " + chalk.cyan(`regions/${primaryRegion.name}/zones/${primaryZone}/networking.yaml`) + " → Add public IPs");
+    console.log(chalk.white("  4. ") + chalk.cyan("soverstack validate platform.yaml"));
+    console.log(chalk.white("  5. ") + chalk.cyan("soverstack apply platform.yaml"));
 
-    console.log(chalk.yellow("\nNever commit: SSH keys, .env files"));
-  }
+    console.log(chalk.bold("\nProject Structure:\n"));
+    console.log(chalk.gray("  platform.yaml         ") + "← Start here");
+    console.log(chalk.gray("  .env                  ") + "← Passwords (NEVER COMMIT)");
+    console.log(chalk.gray("  services/             ") + "← Global services config");
+    console.log(chalk.gray("  compute.yaml          ") + "← VM specifications");
+    console.log(chalk.gray("  database.yaml         ") + "← PostgreSQL config");
+    console.log(chalk.gray("  apps/                 ") + "← Optional: customize apps");
 
-  private printNextStepsSingleDc(): void {
-    console.log(chalk.gray("2.") + " Configure infrastructure:");
-    console.log(chalk.gray("   - platform.yaml"));
-    console.log(chalk.gray("   - datacenter.yaml"));
-    console.log(chalk.gray("   - compute/core-compute.yaml"));
-    console.log(chalk.gray("   - database/core-database.yaml"));
-    console.log(chalk.gray("   - networking.yaml"));
-    console.log(chalk.gray("   - security.yaml"));
-    console.log(chalk.gray("   - observability.yaml"));
-    console.log(chalk.gray("   - ssh_config.yaml"));
-    console.log(chalk.gray("\n3.") + " Set .env variables");
-    console.log(chalk.gray("4.") + " Validate: " + chalk.cyan("soverstack validate platform.yaml"));
-    console.log(chalk.gray("5.") + " Apply: " + chalk.cyan("soverstack apply platform.yaml"));
-  }
-
-  private printNextStepsMultiDc(): void {
-    console.log(chalk.gray("2.") + " Configure datacenters:");
-
-    this.options.datacenters!.forEach((dc) => {
-      console.log(chalk.gray(`   datacenters/${dc}/`));
-      console.log(chalk.gray("     - datacenter.yaml"));
-      console.log(chalk.gray("     - compute/core-compute.yaml"));
-      console.log(chalk.gray("     - database/core-database.yaml"));
-      console.log(chalk.gray("     - networking.yaml"));
-      console.log(chalk.gray("     - security.yaml"));
-      console.log(chalk.gray("     - observability.yaml"));
-      console.log(chalk.gray("     - ssh_config.yaml"));
-      console.log(chalk.gray("     - .env"));
+    regions.forEach((region: RegionConfig) => {
+      console.log(chalk.gray(`  regions/${region.name}/`));
+      region.zones.forEach((zone: string) => {
+        const isControlPlane = region.name === primaryRegion.name && zone === primaryZone;
+        console.log(
+          chalk.gray(`    └─ zones/${zone}/`) +
+            (isControlPlane ? chalk.cyan(" ← control plane") : "")
+        );
+      });
     });
 
-    console.log(chalk.gray("\n3.") + " Set .env variables (root + per datacenter)");
-
-    this.options.datacenters!.forEach((dc, i) => {
-      const step = 4 + i * 2;
-      console.log(
-        chalk.gray(`${step}.`) +
-          " Validate: " +
-          chalk.cyan(`soverstack validate platform.yaml --dc ${dc}`)
-      );
-      console.log(
-        chalk.gray(`${step + 1}.`) +
-          " Apply: " +
-          chalk.cyan(`soverstack apply platform.yaml --dc ${dc}`)
-      );
-    });
+    console.log(chalk.yellow("\nNever commit: .env, SSH keys"));
   }
-}
-
-
-export const isMultiDcFunc=(datacenters?:string[] )=>{
- return !!( datacenters &&  datacenters.length > 0);
 }

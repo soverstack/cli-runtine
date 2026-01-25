@@ -6,93 +6,118 @@ import { VM_ID_RANGES as TYPE_VM_ID_RANGES } from "../../../constants";
 // VM ID RANGE VALIDATION RULES
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// RESERVED ID RANGES (from types.ts):
-// - 1-99: Firewalls (VyOS/OPNsense)
-// - 100-199: Bastion & Management (Headscale)
-// - 200-249: IAM/SSO (Keycloak, Authentik)
-// - 250-299: Databases (PostgreSQL, Redis)
-// - 300-349: Monitoring (Prometheus, Grafana)
-// - 350-399: Logging/Audit (Loki, Wazuh, Falco)
-// - 400-449: Load Balancers (HAProxy)
-// - 450-499: CI/CD, Backup & Misc
-// - 500-599: K8s Control Plane (Masters)
-// - 600-3000: K8s Data Plane (Workers)
-// - 3001+: Applications
+// RESERVED ID RANGES:
+//   1-99:      EDGE          - VyOS, PowerDNS, dnsdist
+//   100-199:   SECURITY      - Headscale, Teleport, Vault, CrowdSec
+//   200-299:   IAM_DATA      - Keycloak, PostgreSQL
+//   300-399:   OBSERVABILITY - Prometheus, Grafana, Loki, Alertmanager, Wazuh
+//   400-499:   INFRA         - HAProxy, Soverstack
+//   500-1999:  KUBERNETES    - Masters (500-599), Workers (600-1999)
+//   2000-2999: BACKUP        - PBS, MinIO (Hub only)
+//   3000+:     APPLICATIONS  - Custom apps
 //
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface VMIdRange {
   min: number;
   max: number;
-  role: VMRole | "firewall" | "bastion" | "load_balancer" | "iam_sso" | "database";
+  role: VMRole;
   description: string;
 }
 
-// Convert the TYPE_VM_ID_RANGES to the format used by validation
+// Convert the TYPE_VM_ID_RANGES to the format used by validation (simplified by group)
 export const VM_ID_RANGES: VMIdRange[] = [
-  { min: TYPE_VM_ID_RANGES.FIREWALL.min, max: TYPE_VM_ID_RANGES.FIREWALL.max, role: "firewall", description: "Firewalls" },
-  { min: TYPE_VM_ID_RANGES.DNS_LB.min, max: TYPE_VM_ID_RANGES.DNS_LB.max, role: "dns_lb", description: "DNS Load Balancers" },
-  { min: TYPE_VM_ID_RANGES.DNS_SERVER.min, max: TYPE_VM_ID_RANGES.DNS_SERVER.max, role: "dns_server", description: "DNS Servers" },
-  { min: TYPE_VM_ID_RANGES.BASTION.min, max: TYPE_VM_ID_RANGES.BASTION.max, role: "bastion", description: "Bastions" },
-  { min: TYPE_VM_ID_RANGES.SECRETS.min, max: TYPE_VM_ID_RANGES.SECRETS.max, role: "secrets", description: "Secrets Management" },
-  { min: TYPE_VM_ID_RANGES.IAM_SSO.min, max: TYPE_VM_ID_RANGES.IAM_SSO.max, role: "iam_sso", description: "IAM/SSO" },
-  { min: TYPE_VM_ID_RANGES.DATABASE.min, max: TYPE_VM_ID_RANGES.DATABASE.max, role: "database", description: "Databases" },
-  { min: TYPE_VM_ID_RANGES.CACHE.min, max: TYPE_VM_ID_RANGES.CACHE.max, role: "cache", description: "Cache Servers" },
-  { min: TYPE_VM_ID_RANGES.MONITORING.min, max: TYPE_VM_ID_RANGES.MONITORING.max, role: "monitoring", description: "Monitoring" },
-  { min: TYPE_VM_ID_RANGES.ALERTING.min, max: TYPE_VM_ID_RANGES.ALERTING.max, role: "alerting", description: "Alerting" },
-  { min: TYPE_VM_ID_RANGES.DASHBOARDS.min, max: TYPE_VM_ID_RANGES.DASHBOARDS.max, role: "dashboards", description: "Dashboards" },
-  { min: TYPE_VM_ID_RANGES.LOGGING.min, max: TYPE_VM_ID_RANGES.LOGGING.max, role: "logging", description: "Logging" },
-  { min: TYPE_VM_ID_RANGES.SIEM.min, max: TYPE_VM_ID_RANGES.SIEM.max, role: "siem", description: "SIEM/Security" },
-  { min: TYPE_VM_ID_RANGES.LOAD_BALANCER.min, max: TYPE_VM_ID_RANGES.LOAD_BALANCER.max, role: "load_balancer", description: "Load Balancers" },
-  { min: TYPE_VM_ID_RANGES.TOOLS.min, max: TYPE_VM_ID_RANGES.TOOLS.max, role: "pentest", description: "Tools" },
-  { min: TYPE_VM_ID_RANGES.CI_CD.min, max: TYPE_VM_ID_RANGES.CI_CD.max, role: "ci_runner", description: "CI/CD" },
-  { min: TYPE_VM_ID_RANGES.K8S_MASTER.min, max: TYPE_VM_ID_RANGES.K8S_MASTER.max, role: "k8s_master", description: "K8s Masters" },
-  { min: TYPE_VM_ID_RANGES.K8S_WORKER.min, max: TYPE_VM_ID_RANGES.K8S_WORKER.max, role: "k8s_worker", description: "K8s Workers" },
+  // Edge (1-99): Firewall, DNS
+  { min: TYPE_VM_ID_RANGES.EDGE.min, max: TYPE_VM_ID_RANGES.EDGE.max, role: "firewall", description: "Edge (Firewall, DNS)" },
+  { min: TYPE_VM_ID_RANGES.EDGE.min, max: TYPE_VM_ID_RANGES.EDGE.max, role: "dns_lb", description: "Edge (Firewall, DNS)" },
+  { min: TYPE_VM_ID_RANGES.EDGE.min, max: TYPE_VM_ID_RANGES.EDGE.max, role: "dns_server", description: "Edge (Firewall, DNS)" },
+  // Security (100-199): VPN, SSH, Secrets, IDS
+  { min: TYPE_VM_ID_RANGES.SECURITY.min, max: TYPE_VM_ID_RANGES.SECURITY.max, role: "bastion", description: "Security" },
+  { min: TYPE_VM_ID_RANGES.SECURITY.min, max: TYPE_VM_ID_RANGES.SECURITY.max, role: "ssh_bastion", description: "Security" },
+  { min: TYPE_VM_ID_RANGES.SECURITY.min, max: TYPE_VM_ID_RANGES.SECURITY.max, role: "ids", description: "Security" },
+  { min: TYPE_VM_ID_RANGES.SECURITY.min, max: TYPE_VM_ID_RANGES.SECURITY.max, role: "secrets", description: "Security" },
+  // IAM & Data (200-299): Keycloak, PostgreSQL, Redis
+  { min: TYPE_VM_ID_RANGES.IAM_DATA.min, max: TYPE_VM_ID_RANGES.IAM_DATA.max, role: "iam_sso", description: "IAM & Data" },
+  { min: TYPE_VM_ID_RANGES.IAM_DATA.min, max: TYPE_VM_ID_RANGES.IAM_DATA.max, role: "database", description: "IAM & Data" },
+  { min: TYPE_VM_ID_RANGES.IAM_DATA.min, max: TYPE_VM_ID_RANGES.IAM_DATA.max, role: "cache", description: "IAM & Data" },
+  // Observability (300-399): Prometheus, Grafana, Loki, Wazuh
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "monitoring", description: "Observability" },
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "dashboards", description: "Observability" },
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "logging", description: "Observability" },
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "alerting", description: "Observability" },
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "status_page", description: "Observability" },
+  { min: TYPE_VM_ID_RANGES.OBSERVABILITY.min, max: TYPE_VM_ID_RANGES.OBSERVABILITY.max, role: "siem", description: "Observability" },
+  // Infra (400-499): Load Balancer, Tools
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "load_balancer", description: "Infra" },
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "management", description: "Infra" },
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "git_server", description: "Infra" },
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "registry", description: "Infra" },
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "pentest", description: "Infra" },
+  { min: TYPE_VM_ID_RANGES.INFRA.min, max: TYPE_VM_ID_RANGES.INFRA.max, role: "ci_runner", description: "Infra" },
+  // Kubernetes (500-1999): Masters 500-599, Workers 600-1999
+  { min: 500, max: 599, role: "k8s_master", description: "K8s Masters" },
+  { min: 600, max: 1999, role: "k8s_worker", description: "K8s Workers" },
+  // Backup (1000-1999): PBS, MinIO
+  { min: TYPE_VM_ID_RANGES.BACKUP.min, max: TYPE_VM_ID_RANGES.BACKUP.max, role: "backup_server", description: "Backup" },
+  { min: TYPE_VM_ID_RANGES.BACKUP.min, max: TYPE_VM_ID_RANGES.BACKUP.max, role: "object_storage", description: "Backup" },
+  // Applications (2000+)
   { min: TYPE_VM_ID_RANGES.APPLICATIONS.min, max: TYPE_VM_ID_RANGES.APPLICATIONS.max, role: "general_purpose", description: "Applications" },
 ];
 
 /**
- * Gets the expected range for a role
+ * Gets the expected range for a role (simplified by group)
  */
 export function getExpectedRangeForRole(role: VMRole | string): { min: number; max: number } | null {
   switch (role) {
+    // EDGE (1-99): Firewall, DNS
     case "firewall":
-      return TYPE_VM_ID_RANGES.FIREWALL;
     case "dns_lb":
-      return TYPE_VM_ID_RANGES.DNS_LB;
     case "dns_server":
-      return TYPE_VM_ID_RANGES.DNS_SERVER;
+      return TYPE_VM_ID_RANGES.EDGE;
+
+    // SECURITY (100-199): VPN, SSH, Secrets, IDS
     case "bastion":
-      return TYPE_VM_ID_RANGES.BASTION;
+    case "ssh_bastion":
+    case "ids":
     case "secrets":
-      return TYPE_VM_ID_RANGES.SECRETS;
+      return TYPE_VM_ID_RANGES.SECURITY;
+
+    // IAM & DATA (200-299): Keycloak, PostgreSQL, Redis
     case "iam_sso":
-      return TYPE_VM_ID_RANGES.IAM_SSO;
     case "database":
-      return TYPE_VM_ID_RANGES.DATABASE;
     case "cache":
-      return TYPE_VM_ID_RANGES.CACHE;
+      return TYPE_VM_ID_RANGES.IAM_DATA;
+
+    // OBSERVABILITY (300-399): Prometheus, Grafana, Loki, Wazuh
     case "monitoring":
-      return TYPE_VM_ID_RANGES.MONITORING;
-    case "alerting":
-      return TYPE_VM_ID_RANGES.ALERTING;
     case "dashboards":
-      return TYPE_VM_ID_RANGES.DASHBOARDS;
     case "logging":
-      return TYPE_VM_ID_RANGES.LOGGING;
+    case "alerting":
+    case "status_page":
     case "siem":
-      return TYPE_VM_ID_RANGES.SIEM;
+      return TYPE_VM_ID_RANGES.OBSERVABILITY;
+
+    // INFRA (400-499): Load Balancer, Tools
     case "load_balancer":
-      return TYPE_VM_ID_RANGES.LOAD_BALANCER;
-    case "pentest":
     case "management":
-      return TYPE_VM_ID_RANGES.TOOLS;
+    case "git_server":
+    case "registry":
+    case "pentest":
     case "ci_runner":
-      return TYPE_VM_ID_RANGES.CI_CD;
+      return TYPE_VM_ID_RANGES.INFRA;
+
+    // KUBERNETES (500-1999): Masters 500-599, Workers 600-1999
     case "k8s_master":
-      return TYPE_VM_ID_RANGES.K8S_MASTER;
+      return { min: 500, max: 599 };
     case "k8s_worker":
-      return TYPE_VM_ID_RANGES.K8S_WORKER;
+      return { min: 600, max: 1999 };
+
+    // BACKUP (1000-1999): PBS, MinIO
+    case "backup_server":
+    case "object_storage":
+      return TYPE_VM_ID_RANGES.BACKUP;
+
+    // APPLICATIONS (2000+)
     case "general_purpose":
     default:
       return TYPE_VM_ID_RANGES.APPLICATIONS;

@@ -1,150 +1,271 @@
 # Networking Layer
 
-The networking layer configures public IPs, firewall, VPN, and DNS.
+The networking layer is split into two files:
+- **Global** (`networking.yaml`) - DNS, VPN, global mesh networks
+- **Zone** (`zones/{zone}/networking.yaml`) - Public IPs, zone mesh networks
 
-## Schema
+## File Structure
 
-Defined by [`NetworkingConfig`](../08-reference/types/NetworkingConfig.md) interface.
-
-## Properties
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `public_ip` | [`PublicIPConfig`](#public-ip-config) | ❌ | Public IP block configuration |
-| `firewall` | [`FirewallConfig`](#firewall-config) | ✅ (prod) | Firewall configuration |
-| `vpn` | [`VPNConfig`](#vpn-config) | ✅ (prod) | VPN configuration |
-| `dns` | [`DNSConfig`](#dns-config) | ❌ | DNS configuration |
-
-## Public IP Config
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `type` | `"allocated_block"` \| `"bgp"` | ✅ | IP allocation type |
-| `allocated_block` | object | ❌ | Static IP block config |
-| `allocated_block.block` | `string` | ✅ | CIDR block (e.g., `203.0.113.0/28`) |
-| `allocated_block.gateway` | `string` | ✅ | Gateway IP |
-| `allocated_block.usable_range` | `string` | ✅ | Usable IP range |
-| `failover` | object | ❌ | VRRP failover config |
-| `bgp` | object | ❌ | BGP configuration (coming soon) |
-
-## Firewall Config
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `enabled` | `boolean` | ✅ | Enable firewall |
-| `type` | `"vyos"` \| `"opnsense"` \| `"pfsense"` | ✅ | Firewall type |
-| `deployment` | `"vm"` | ✅ | Deployment type |
-| `vm_ids` | `number[]` | ✅ | VM IDs (2 for HA) |
-| `public_ip` | [`FloatingIP`](../08-reference/types/FloatingIP.md) | ❌ | Public IP assignment |
-| `domain` | `string` | ❌ | Firewall domain |
-
-## VPN Config
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `enabled` | `boolean` | ✅ | Enable VPN |
-| `type` | `"headscale"` \| `"wireguard"` \| `"netbird"` | ✅ | VPN type |
-| `deployment` | `"vm"` | ✅ | Deployment type |
-| `vm_ids` | `number[]` | ✅ | VM IDs (2 for HA) |
-| `public_ip` | [`FloatingIP`](../08-reference/types/FloatingIP.md) | ❌ | Public IP assignment |
-| `database` | `string` | ❌ | Database name reference |
-| `vpn_subnet` | `string` | ❌ | VPN subnet (default: `100.64.0.0/10`) |
-| `oidc_enforced` | `true` | ✅ | Always true, cannot be disabled |
-
-## DNS Config
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `type` | `"powerdns"` \| `"cloudflare"` \| `"hybrid"` | ✅ | DNS type |
-| `deployment` | `"vm"` \| `"cluster"` | ✅ | Deployment type |
-| `powerdns` | object | ❌ | PowerDNS config |
-| `powerdns.vm_ids` | `number[]` | ✅ | PowerDNS VM IDs |
-| `powerdns.loadbalancer_vm_ids` | `number[]` | ❌ | dnsdist VM IDs |
-| `powerdns.database` | `string` | ✅ | Database name |
-| `cloudflare` | object | ❌ | Cloudflare config |
-| `zones` | [`DNSZone[]`](#dns-zone) | ✅ | DNS zones |
-
-### DNS Zone
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `domain` | `string` | ✅ | Zone domain |
-| `type` | `"primary"` \| `"secondary"` | ✅ | Zone type |
-| `internal` | `boolean` | ❌ | Internal-only zone |
-| `nameservers` | `string[]` | ❌ | Nameserver hostnames |
-
-## Complete Example
-
-```yaml
-# layers/networking.yaml
-
-# Public IP block configuration
-public_ip:
-  type: allocated_block
-  allocated_block:
-    block: "203.0.113.0/28"
-    gateway: "203.0.113.1"
-    usable_range: "203.0.113.2-203.0.113.14"
-  failover:
-    type: vrrp
-    routers:
-      - name: vyos-01
-        vm_id: 1
-        priority: 100
-      - name: vyos-02
-        vm_id: 2
-        priority: 50
-
-# Firewall (VyOS)
-firewall:
-  enabled: true
-  type: vyos
-  deployment: vm
-  vm_ids: [1, 2]                    # From core-compute.yaml
-  public_ip:
-    ip: "203.0.113.2"
-    vrrp_id: 10
-  domain: firewall.example.com
-
-# VPN (Headscale)
-vpn:
-  enabled: true
-  type: headscale
-  deployment: vm
-  vm_ids: [100, 101]                # From core-compute.yaml
-  public_ip:
-    ip: "203.0.113.3"
-    vrrp_id: 20
-  database: headscale               # From core-databases.yaml
-  vpn_subnet: "100.64.0.0/10"
-  oidc_enforced: true               # Cannot be changed
-
-# DNS (PowerDNS)
-dns:
-  type: powerdns
-  deployment: vm
-  powerdns:
-    vm_ids: [70, 71]                # From core-compute.yaml
-    loadbalancer_vm_ids: [50, 51]   # dnsdist from core-compute.yaml
-    database: powerdns              # From core-databases.yaml
-  zones:
-    - domain: example.com
-      type: primary
-    - domain: internal.example.com
-      type: primary
-      internal: true
+```
+project/
+├── networking.yaml                      # GLOBAL
+└── regions/eu/zones/main/
+    └── networking.yaml                  # ZONE
 ```
 
-## VM ID References
+---
 
-The networking layer references VMs from `core-compute.yaml`:
+## Global Networking (`networking.yaml`)
 
-| Service | VM IDs | Range |
-|---------|--------|-------|
-| VyOS Firewall | 1, 2 | FIREWALL (1-49) |
-| dnsdist | 50, 51 | DNS_LB (50-69) |
-| PowerDNS | 70, 71 | DNS_SERVER (70-99) |
-| Headscale | 100, 101 | BASTION (100-149) |
+### Schema Overview
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `dns` | [`DNSConfig`](#dns-config) | Yes | DNS configuration |
+| `vpn` | [`VPNConfig`](#vpn-config) | Yes | VPN (Headscale) configuration |
+| `mesh_networks` | [`MeshNetwork[]`](#mesh-network) | Yes | Global mesh networks |
+
+### DNS Config
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `type` | `powerdns` \| `cloudflare` \| `hybrid` | Yes | DNS provider type |
+| `powerdns` | object | If type=powerdns/hybrid | PowerDNS config |
+| `powerdns.database` | string | Yes | Database name |
+| `powerdns.vm_ids` | number[] | Yes | PowerDNS VM IDs |
+| `dnsdist` | object | No | Load balancer config |
+| `dnsdist.vm_ids` | number[] | Yes | dnsdist VM IDs |
+| `cloudflare` | object | If type=cloudflare/hybrid | Cloudflare config |
+| `cloudflare.credentials` | CredentialRef | Yes | API token |
+| `cloudflare.proxy` | boolean | No | Enable orange cloud |
+| `cloudflare.sync` | `push` | If hybrid | Sync direction |
+
+### VPN Config
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `type` | `headscale` | Yes | VPN type |
+| `database` | string | Yes | Database name |
+| `vm_ids` | number[] | Yes | Headscale server VM IDs |
+
+### Mesh Network (Global)
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | Yes | Network name |
+| `subnet` | string (CIDR) | Yes | Network subnet |
+| `port` | number | Yes | WireGuard port |
+| `purpose` | string | No | Description |
+
+### Global Mesh Networks
+
+| Name | Subnet | Port | Purpose |
+|------|--------|------|---------|
+| `management` | 10.10.0.0/16 | 51820 | SSH, monitoring, admin |
+| `backup` | 10.40.0.0/16 | 51825 | Hub to zones backup traffic |
+
+### Complete Example (Global)
+
+```yaml
+# networking.yaml (GLOBAL)
+
+dns:
+  type: powerdns             # powerdns | cloudflare | hybrid
+
+  # type: powerdns
+  powerdns:
+    database: powerdns
+    vm_ids: [50, 51]
+
+  dnsdist:
+    vm_ids: [60, 61]
+
+  # type: cloudflare
+  # cloudflare:
+  #   credentials:
+  #     type: env
+  #     var_name: CLOUDFLARE_API_TOKEN
+  #   proxy: true
+
+  # type: hybrid (PowerDNS + Cloudflare)
+  # powerdns:
+  #   database: powerdns
+  #   vm_ids: [50, 51]
+  # dnsdist:
+  #   vm_ids: [60, 61]
+  # cloudflare:
+  #   credentials:
+  #     type: env
+  #     var_name: CLOUDFLARE_API_TOKEN
+  #   proxy: true
+  #   sync: push
+
+  # Soverstack auto-generates:
+  # - Glue records (ns1/ns2 IPs from zone's public_ips)
+  # - A records for all VMs
+  # - Wildcard for ingress
+
+vpn:
+  type: headscale
+  database: headscale
+  vm_ids: [100, 101]
+
+mesh_networks:
+  - name: management
+    subnet: 10.10.0.0/16
+    port: 51820
+    purpose: SSH, monitoring, admin (global access)
+
+  - name: backup
+    subnet: 10.40.0.0/16
+    port: 51825
+    purpose: Backup traffic (hub to zones)
+```
+
+---
+
+## Zone Networking (`zones/{zone}/networking.yaml`)
+
+### Schema Overview
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `zone` | string | Yes | Zone name |
+| `region` | string | Yes | Region name |
+| `public_ips` | [`PublicIPsConfig`](#public-ips-config) | Yes | Public IP configuration |
+| `mesh_networks` | [`MeshNetwork[]`](#mesh-network-zone) | Yes | Zone mesh networks |
+
+### Public IPs Config
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `type` | `allocated_block` \| `bgp` | Yes | IP allocation type |
+| `allocated_block` | object | If type=allocated_block | Static block config |
+| `allocated_block.block` | string (CIDR) | Yes | IP block |
+| `allocated_block.gateway` | string | Yes | Gateway IP |
+| `allocated_block.usable_range` | string | Yes | Usable IP range |
+| `bgp` | object | If type=bgp | BGP config (coming soon) |
+| `bgp.asn` | number | Yes | Your ASN |
+| `bgp.ip_blocks` | string[] | Yes | IP blocks to announce |
+
+### Mesh Network (Zone)
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | Yes | Network name |
+| `subnet` | string (CIDR) | Yes | Network subnet |
+| `port` | number | Yes | WireGuard port |
+| `mtu` | number | No | MTU (default 1420, 8940 for jumbo) |
+| `purpose` | string | No | Description |
+
+### Zone Mesh Networks
+
+| Name | Subnet | Port | MTU | Purpose |
+|------|--------|------|-----|---------|
+| `services` | 10.50.x.0/24 | 51826 | 1420 | VyOS, HAProxy, local services |
+| `ceph-public` | 10.20.x.0/24 | 51821 | 1420 | VM I/O to Ceph |
+| `ceph-cluster` | 10.21.x.0/24 | 51822 | 8940 | Ceph replication (latency critical) |
+| `proxmox-public` | 10.30.x.0/24 | 51823 | 1420 | Proxmox API/UI |
+| `proxmox-cluster` | 10.31.x.0/24 | 51824 | 1420 | Corosync, live migration |
+
+### Complete Example (Zone)
+
+```yaml
+# zones/main/networking.yaml (ZONE)
+
+zone: main
+region: eu
+
+public_ips:
+  type: allocated_block      # allocated_block | bgp
+
+  allocated_block:
+    block: 203.0.113.0/29
+    gateway: 203.0.113.1
+    usable_range: 203.0.113.2-203.0.113.6
+
+  # bgp:
+  #   asn: 210123
+  #   ip_blocks:
+  #     - 203.0.113.0/24
+
+  # Soverstack auto-assigns IPs to:
+  # - powerdns (if dns.type = powerdns)
+  # - vyos (firewall)
+  # - haproxy-edge (ingress)
+  # And configures VRRP failover automatically
+
+mesh_networks:
+  - name: services
+    subnet: 10.50.0.0/24
+    port: 51826
+    purpose: VyOS, HAProxy, local services
+
+  - name: ceph-public
+    subnet: 10.20.0.0/24
+    port: 51821
+    purpose: VM I/O to Ceph
+
+  - name: ceph-cluster
+    subnet: 10.21.0.0/24
+    port: 51822
+    mtu: 8940
+    purpose: Ceph replication (latency critical)
+
+  - name: proxmox-public
+    subnet: 10.30.0.0/24
+    port: 51823
+    purpose: Proxmox API/UI
+
+  - name: proxmox-cluster
+    subnet: 10.31.0.0/24
+    port: 51824
+    purpose: Corosync, live migration (latency critical)
+```
+
+---
+
+## IP Auto-Assignment
+
+Soverstack automatically assigns public IPs based on VM roles:
+
+| Order | Service | VMs |
+|-------|---------|-----|
+| 1 | PowerDNS | 2 (if dns.type = powerdns) |
+| 2 | VyOS (firewall) | 2 |
+| 3 | HAProxy edge (ingress) | 2 |
+
+**Example with /29 block (6 usable IPs):**
+
+```
+Block: 203.0.113.0/29
+Gateway: 203.0.113.1
+
+Auto-assigned:
+  203.0.113.2 → powerdns-01
+  203.0.113.3 → powerdns-02
+  203.0.113.4 → vyos-01
+  203.0.113.5 → vyos-02
+  203.0.113.6 → haproxy-edge-01
+  (need more IPs for haproxy-edge-02)
+```
+
+---
+
+## Scope Summary
+
+| Element | File | Scope | Why |
+|---------|------|-------|-----|
+| DNS (PowerDNS) | networking.yaml | Global | Single source of truth |
+| VPN (Headscale) | networking.yaml | Global | Single control plane |
+| mesh-management | networking.yaml | Global | Admin access everywhere |
+| mesh-backup | networking.yaml | Global | Cross-zone backup |
+| Public IPs | zones/{zone}/networking.yaml | Zone | Physical location |
+| mesh-services | zones/{zone}/networking.yaml | Zone | Local services |
+| mesh-ceph-* | zones/{zone}/networking.yaml | Zone | Latency critical |
+| mesh-proxmox-* | zones/{zone}/networking.yaml | Zone | Latency critical |
+
+---
 
 ## Validation Rules
 
@@ -154,35 +275,25 @@ The networking layer references VMs from `core-compute.yaml`:
 |------|----------|
 | Valid CIDR format | Error |
 | Valid IP addresses | Error |
-| `oidc_enforced` must be `true` | Critical |
+| Mesh subnets don't overlap | Error |
 
 ### Production/Enterprise
 
 | Rule | Severity |
 |------|----------|
-| Firewall required | Critical |
+| DNS required | Critical |
 | VPN required | Critical |
-| Minimum 2 firewall VMs | Critical |
-| Minimum 2 VPN VMs | Critical |
+| Minimum 2 PowerDNS VMs | Critical |
+| Minimum 2 Headscale VMs | Critical |
+| Public IP block required | Critical |
 
-## FloatingIP
-
-For services with public IPs:
-
-```yaml
-public_ip:
-  ip: "203.0.113.2"
-  vrrp_id: 10                    # 1-255, unique per IP
-  health_check:
-    type: tcp
-    port: 443
-    interval: "5s"
-```
+---
 
 ## See Also
 
-- [NetworkingConfig Type](../08-reference/types/NetworkingConfig.md)
+- [Network Design](../02-architecture/network-design.md)
+- [Network Isolation Architecture](../10-deep-dive/05-network-isolation-architecture.md)
+- [Deployment Scopes](../10-deep-dive/08-deployment-scopes.md)
 - [VyOS Firewall](../04-services/vyos-firewall.md)
 - [Headscale VPN](../04-services/headscale-vpn.md)
 - [PowerDNS](../04-services/powerdns.md)
-- [Network Design](../02-architecture/network-design.md)

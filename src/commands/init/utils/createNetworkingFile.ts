@@ -7,152 +7,70 @@ export const createNetworkingFile = ({
   infrastructureTier,
   outputDir,
 }: InitOptions): void => {
+  // Use outputDir if provided (for services/ folder), otherwise use project root
   const targetDir = outputDir || path.resolve(process.cwd(), projectName);
   const filePath = path.join(targetDir, "networking.yaml");
 
   const isLocal = infrastructureTier === "local";
-  const minVMs = isLocal ? 1 : 2;
 
-  const content = `# ============================================================
-# NETWORKING CONFIGURATION
-# ============================================================
+  // VM IDs based on tier (HA for production)
+  const powerdnsVmIds = isLocal ? "[50]" : "[50, 51]";
+  const dnsdistVmIds = isLocal ? "[60]" : "[60, 61]";
+  const headscaleVmIds = isLocal ? "[100]" : "[100, 101]";
+
+  const content = `# ════════════════════════════════════════════════════════════════════════════
+# GLOBAL NETWORKING
+# ════════════════════════════════════════════════════════════════════════════
 #
-# Documentation: https://docs.soverstack.io/configuration/networking
+# Global network services. Zone-specific → regions/{region}/zones/{zone}/networking.yaml
 #
-# This layer manages:
-# - Public IP block and failover (VRRP)
-# - DNS (PowerDNS, Cloudflare, or hybrid)
-# - VPN (Headscale)
-# - Firewall (VyOS)
+# VM ID Ranges:
+#   PowerDNS:  50-59   (authoritative DNS)
+#   dnsdist:   60-69   (DNS load balancer)
+#   Headscale: 100-109 (VPN control plane)
 #
-# NOTE: Ingress is configured in cluster.yaml (it's K8s-specific)
+# VM specs: see compute.yaml (type: edge-std, security-std)
+# Customize: create apps/powerdns.yaml, apps/headscale.yaml
 #
-# ============================================================
+# ════════════════════════════════════════════════════════════════════════════
 
-# ------------------------------------------------------------
-# PUBLIC IP CONFIGURATION
-# ------------------------------------------------------------
-# How your public IPs are managed. Two options:
-#
-# 1. allocated_block: Datacenter gives you an IP block
-# 2. bgp: You have your own ASN (coming soon)
-#
-public_ip:
-  type: allocated_block  # allocated_block | bgp (coming soon)
-
-  # Your IP block from the datacenter
-  allocated_block:
-    block: ""              # e.g., "203.0.113.0/27" (32 IPs)
-    gateway: ""            # e.g., "203.0.113.1"
-    usable_range: ""       # e.g., "203.0.113.2-203.0.113.30"
-
-  # VRRP failover between firewall VMs
-  failover:
-    type: vrrp
-    routers:
-      - name: vyos-01
-        vm_id: 10
-        priority: 100      # Master
-      - name: vyos-02
-        vm_id: 11
-        priority: 99       # Backup
-    auth:
-      type: env
-      var_name: VRRP_PASSWORD
-
-  # BGP option (coming soon)
-  # bgp:
-  #   status: coming_soon
-  #   asn: 210123
-  #   ip_blocks:
-  #     - "203.0.113.0/24"
-
-# ------------------------------------------------------------
-# FIREWALL CONFIGURATION
-# ------------------------------------------------------------
-# Gateway firewall for the infrastructure
-# Minimum ${minVMs} VMs for ${isLocal ? "local" : "HA"}
-#
-firewall:
-  enabled: true
-  type: vyos              # vyos | opnsense | pfsense
-  deployment: vm
-  vm_ids: [10${isLocal ? "" : ", 11"}]           # Min ${minVMs} for ${isLocal ? "local" : "HA"} (range: 1-99)
-
-  # Public IP assigned to firewall (from allocated_block)
-  public_ip:
-    ip: ""                # e.g., "203.0.113.2"
-    vrrp_id: 1            # Unique VRRP ID (1-255)
-    health_check:
-      type: tcp
-      port: 443
-
-  domain: ""              # Optional: firewall management subdomain
-
-# ------------------------------------------------------------
-# VPN CONFIGURATION
-# ------------------------------------------------------------
-# Secure access to internal resources
-# Minimum ${minVMs} VMs for ${isLocal ? "local" : "HA"}
-#
-vpn:
-  enabled: true
-  type: headscale         # headscale | wireguard | netbird
-  deployment: vm
-  vm_ids: [100${isLocal ? "" : ", 101"}]         # Min ${minVMs} for ${isLocal ? "local" : "HA"} (range: 100-199)
-
-  # Public IP assigned to VPN (from allocated_block)
-  public_ip:
-    ip: ""                # e.g., "203.0.113.3"
-    vrrp_id: 2            # Unique VRRP ID (1-255)
-    health_check:
-      type: tcp
-      port: 443
-
-  database: main          # Reference to database cluster name
-  vpn_subnet: "100.64.0.0/10"  # CGNAT range recommended
-  oidc_enforced: true     # Always enforce OIDC (cannot be disabled)
-
-# ------------------------------------------------------------
-# DNS CONFIGURATION
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────────────────────
+# DNS
+# ────────────────────────────────────────────────────────────────────────────
 # type: powerdns | cloudflare | hybrid
-#
-# - powerdns: 100% self-hosted
-# - cloudflare: 100% external (API-managed)
-# - hybrid: Cloudflare in front, PowerDNS as source of truth
 #
 dns:
   type: powerdns
-  deployment: vm
 
-  # PowerDNS specific (required if type is powerdns or hybrid)
   powerdns:
-    vm_ids: []            # Min ${isLocal ? 1 : 3} for ${isLocal ? "local" : "HA"}
-    loadbalancer_vm_ids: []  # dnsdist (optional, recommended for HA)
-    database: main        # Reference to database cluster name
+    vm_ids: ${powerdnsVmIds}
+    database: powerdns
 
-  # Cloudflare specific (required if type is cloudflare or hybrid)
+  dnsdist:
+    vm_ids: ${dnsdistVmIds}
+
   # cloudflare:
-  #   mode: proxy         # proxy | dns_only
-  #   credentials:
+  #   api_token:
   #     type: env
   #     var_name: CLOUDFLARE_API_TOKEN
 
-  zones:
-    - domain: example.com
-      type: primary
-      nameservers:
-        - ns1.example.com
-        - ns2.example.com
-      glue_records:
-        ns1.example.com: ""  # Public IP of ns1
-        ns2.example.com: ""  # Public IP of ns2
+# ────────────────────────────────────────────────────────────────────────────
+# VPN
+# ────────────────────────────────────────────────────────────────────────────
+vpn:
+  type: headscale
+  vm_ids: ${headscaleVmIds}
+  database: headscale
 
-    # Internal zone (not exposed publicly)
-    # - domain: internal.local
-    #   type: primary
-    #   internal: true
+# ────────────────────────────────────────────────────────────────────────────
+# MESH NETWORKS (global)
+# ────────────────────────────────────────────────────────────────────────────
+mesh_networks:
+  - name: management
+    subnet: 10.10.0.0/16
+
+  - name: backup
+    subnet: 10.40.0.0/16
 `;
 
   fs.writeFileSync(filePath, content);

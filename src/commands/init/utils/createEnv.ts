@@ -9,37 +9,54 @@ export const createEnv = ({ outputDir, projectName }: InitOptions) => {
   const targetDir = outputDir || path.resolve(process.cwd(), projectName);
   const filePath = path.join(targetDir, ".env");
 
-  const content = `# ============================================================
+  const content = `# ════════════════════════════════════════════════════════════════════════════
 # SOVERSTACK ENVIRONMENT VARIABLES
-# ============================================================
+# ════════════════════════════════════════════════════════════════════════════
 # NEVER commit this file to version control!
-# ============================================================
+# ════════════════════════════════════════════════════════════════════════════
 
-# SSH KEYS
-SSH_PUBLIC_KEY_PATH=
-SSH_PRIVATE_KEY_PATH=
-
-# PROXMOX SERVERS
+# ────────────────────────────────────────────────────────────────────────────
+# PROXMOX
+# ────────────────────────────────────────────────────────────────────────────
 PROXMOX_API_URL=
-PROXMOX_USER=
+PROXMOX_USER=root@pam
 PROXMOX_PASSWORD=
-# ROOT_PASSWORD_PVE01=
-# ROOT_PASSWORD_PVE02=
-# ROOT_PASSWORD_PVE03=
 
-# DATABASE
+# ────────────────────────────────────────────────────────────────────────────
+# SSH
+# ────────────────────────────────────────────────────────────────────────────
+SSH_PUBLIC_KEY_PATH=~/.ssh/id_ed25519.pub
+SSH_PRIVATE_KEY_PATH=~/.ssh/id_ed25519
+
+# ────────────────────────────────────────────────────────────────────────────
+# DATABASE (PostgreSQL)
+# ────────────────────────────────────────────────────────────────────────────
 POSTGRES_PASSWORD=
 
-# MONITORING
+# ────────────────────────────────────────────────────────────────────────────
+# SECURITY
+# ────────────────────────────────────────────────────────────────────────────
+OPENBAO_ROOT_TOKEN=
+KEYCLOAK_ADMIN_PASSWORD=
+
+# ────────────────────────────────────────────────────────────────────────────
+# OBSERVABILITY
+# ────────────────────────────────────────────────────────────────────────────
 GRAFANA_ADMIN_PASSWORD=
 
-# SECRETS MANAGER (optional)
-# VAULT_ROOT_TOKEN=
+# ────────────────────────────────────────────────────────────────────────────
+# ORCHESTRATOR
+# ────────────────────────────────────────────────────────────────────────────
+SOVERSTACK_ADMIN_PASSWORD=
 
-# SSO (optional)
-# KEYCLOAK_ADMIN_PASSWORD=
+# ────────────────────────────────────────────────────────────────────────────
+# HUB (Backup)
+# ────────────────────────────────────────────────────────────────────────────
+MINIO_ROOT_PASSWORD=
 
-# CLOUDFLARE (optional, if using hybrid DNS)
+# ────────────────────────────────────────────────────────────────────────────
+# DNS (optional - if using Cloudflare)
+# ────────────────────────────────────────────────────────────────────────────
 # CLOUDFLARE_API_TOKEN=
 `;
   fs.writeFileSync(filePath, content);
