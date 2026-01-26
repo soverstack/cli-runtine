@@ -1,5 +1,5 @@
 /**
- * Generate workloads/regional/{region}/monitoring.yaml - Prometheus, Loki, Grafana
+ * Generate workloads/regional/{region}/monitoring.yaml - Metrics, Logs, Alerting, Dashboards
  */
 
 import fs from "fs";
@@ -24,11 +24,11 @@ export function generateMonitoringYaml({ ctx, region }: MonitoringYamlOptions): 
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# MONITORING SERVICE - ${region.name.toUpperCase()}
+# MONITORING - ${region.name.toUpperCase()}
 # ==============================================================================
 #
-# Metrics, logs, and dashboards. Data stays in region (GDPR).
-# Location: ${region.name}/zone-${primaryZone}
+# Metrics, logs, alerting, and dashboards.
+# Data stays in region (GDPR compliant).
 #
 # ==============================================================================
 
@@ -36,70 +36,86 @@ scope: regional
 region: ${region.name}
 
 # ------------------------------------------------------------------------------
-# SERVICE DEFINITION
+# SERVICES
 # ------------------------------------------------------------------------------
 
-role: monitoring                  # What this service provides
-implementation: prometheus        # prometheus | victoriametrics (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Prometheus: 2.53 | Loki: 3.1 | Grafana: 11.1 | Alertmanager: 0.27
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  # Prometheus (Metrics)
-  - name: prometheus-${region.name}-01
-    vm_id: 300
-    flavor: large
-    image: debian-12
-    host: ${nodePrefix}-01
+services:
+  # ============================================================================
+  # METRICS
+  # ============================================================================
+  - role: metrics
+    implementation: prometheus    # prometheus | victoriametrics | mimir
+    # Version: 2.53 | Supported: 2.53, 2.52, 2.51
+    instances:
+      - name: prometheus-${region.name}-01
+        vm_id: 300
+        flavor: large
+        image: debian-12
+        host: ${nodePrefix}-01
+    overwrite_config:
+      # retention: 30d
+      # scrape_interval: 15s
+      # storage_size: 100Gi
 ${!isLocal ? `
-  # Loki (Logs)
-  - name: loki-${region.name}-01
-    vm_id: 320
-    flavor: large
-    image: debian-12
-    host: ${nodePrefix}-02
+  # ============================================================================
+  # LOGS
+  # ============================================================================
+  - role: logs
+    implementation: loki          # loki | elasticsearch | graylog
+    # Version: 3.1 | Supported: 3.1, 3.0, 2.9
+    instances:
+      - name: loki-${region.name}-01
+        vm_id: 320
+        flavor: large
+        image: debian-12
+        host: ${nodePrefix}-02
+    overwrite_config:
+      # retention: 30d
+      # storage_size: 100Gi
 
-  # Alertmanager
-  - name: alertmanager-${region.name}-01
-    vm_id: 330
-    flavor: small
-    image: debian-12
-    host: ${nodePrefix}-01` : ""}
-${isPrimaryRegion ? `
-  # Grafana (Dashboards) - Global but deployed in primary region
-  - name: grafana-01
-    vm_id: 310
-    flavor: standard
-    image: debian-12
-    host: ${nodePrefix}-01` : ""}
-
+  # ============================================================================
+  # ALERTING
+  # ============================================================================
+  - role: alerting
+    implementation: alertmanager  # alertmanager | grafana-alerting
+    # Version: 0.27 | Supported: 0.27, 0.26, 0.25
+    instances:
+      - name: alertmanager-${region.name}-01
+        vm_id: 330
+        flavor: small
+        image: debian-12
+        host: ${nodePrefix}-01
+    overwrite_config:
+      # resolve_timeout: 5m
+      # smtp_smarthost: smtp.example.com:587
+` : ""}${isPrimaryRegion ? `
+  # ============================================================================
+  # DASHBOARDS
+  # ============================================================================
+  - role: dashboards
+    implementation: grafana       # grafana | kibana
+    # Version: 11.1 | Supported: 11.1, 11.0, 10.4
+    instances:
+      - name: grafana-01
+        vm_id: 310
+        flavor: standard
+        image: debian-12
+        host: ${nodePrefix}-01
+    overwrite_config:
+      # anonymous_enabled: false
+      # auth_generic_oauth: true
+` : ""}
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/monitoring/prometheus
+# See: https://docs.soverstack.io/workloads/monitoring
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # prometheus:
-  #   retention: 30d
-  #   scrape_interval: 15s
-  #
-  # loki:
-  #   retention: 30d
-  #
-  # grafana:
-  #   anonymous_enabled: false
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

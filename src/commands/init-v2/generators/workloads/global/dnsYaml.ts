@@ -1,5 +1,5 @@
 /**
- * Generate workloads/global/dns.yaml - PowerDNS + dnsdist
+ * Generate workloads/global/dns.yaml - Authoritative DNS + Load Balancer
  */
 
 import fs from "fs";
@@ -17,7 +17,7 @@ export function generateDnsYaml(ctx: GeneratorContext): void {
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# DNS SERVICE
+# DNS - GLOBAL
 # ==============================================================================
 #
 # Authoritative DNS servers with load balancing.
@@ -28,65 +28,73 @@ export function generateDnsYaml(ctx: GeneratorContext): void {
 scope: global
 
 # ------------------------------------------------------------------------------
-# SERVICE DEFINITION
+# SERVICES
 # ------------------------------------------------------------------------------
 
-role: dns                         # What this service provides
-implementation: powerdns          # powerdns | coredns (coming soon) | bind (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# PowerDNS: 4.9 | dnsdist: 1.9
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  # PowerDNS (Authoritative)
-  - name: ns1
-    vm_id: 50
-    flavor: small
-    image: debian-12
-    host: ${primaryNodePrefix}-01
+services:
+  # ============================================================================
+  # DNS AUTHORITATIVE
+  # ============================================================================
+  - role: dns-authoritative
+    implementation: powerdns      # powerdns | bind | knot
+    # Version: 4.9 | Supported: 4.9, 4.8, 4.7
+    instances:
+      - name: pdns-01
+        vm_id: 50
+        flavor: small
+        image: debian-12
+        host: ${primaryNodePrefix}-01
 ${!isLocal ? `
-  - name: ns2
-    vm_id: 51
-    flavor: small
-    image: debian-12
-    host: ${primaryNodePrefix}-02
+      - name: pdns-02
+        vm_id: 51
+        flavor: small
+        image: debian-12
+        host: ${primaryNodePrefix}-02` : ""}
+    zones:
+      - name: ${options.domain}
+        type: master
+      - name: internal.${options.domain}
+        type: master
+    overwrite_config:
+      # api_enabled: true
+      # webserver_port: 8081
+      # default_ttl: 3600
+${!isLocal ? `
+  # ============================================================================
+  # DNS LOADBALANCER
+  # ============================================================================
+  - role: dns-loadbalancer
+    implementation: dnsdist       # dnsdist | haproxy
+    # Version: 1.9 | Supported: 1.9, 1.8, 1.7
+    instances:
+      - name: dnsdist-01
+        vm_id: 60
+        flavor: micro
+        image: debian-12
+        host: ${primaryNodePrefix}-01
 
-  # dnsdist (Load Balancer)
-  - name: dnsdist-01
-    vm_id: 60
-    flavor: micro
-    image: debian-12
-    host: ${primaryNodePrefix}-01
-
-  - name: dnsdist-02
-    vm_id: 61
-    flavor: micro
-    image: debian-12
-    host: ${primaryNodePrefix}-02` : ""}
-
+      - name: dnsdist-02
+        vm_id: 61
+        flavor: micro
+        image: debian-12
+        host: ${primaryNodePrefix}-02
+    overwrite_config:
+      # cache_size: 10000
+      # max_tcp_clients: 1000
+      # webserver_port: 8083
+` : ""}
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/dns/powerdns
+# See: https://docs.soverstack.io/workloads/dns
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${primaryNodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # powerdns:
-  #   cache_ttl: 60
-  #   allow_axfr_ips: []
-  #
-  # dnsdist:
-  #   max_queued: 1000
+  #   - vlan: public
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
