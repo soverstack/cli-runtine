@@ -167,7 +167,8 @@ export const initCommand = new Command("init")
         console.log(chalk.gray("  │  ") + chalk.cyan.bold("REGIONS & ZONES") + chalk.gray("                                                    │"));
         console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
         console.log(chalk.gray("  │                                                                     │"));
-        console.log(chalk.gray("  │  A ") + chalk.white("region") + chalk.gray(" is a geographic area (e.g., eu, us, asia).              │"));
+        console.log(chalk.gray("  │  A ") + chalk.white("region") + chalk.gray(" is a geographic area (e.g., eu, us, asia,eu-west,eu-east).              │"));
+        console.log(chalk.gray("  │                                                                     │"));
         console.log(chalk.gray("  │  Each region contains ") + chalk.white("zones") + chalk.gray(" (Proxmox clusters).                   │"));
         console.log(chalk.gray("  │                                                                     │"));
         console.log(chalk.gray("  │  Example: region=eu, zones=main,dr                                  │"));
