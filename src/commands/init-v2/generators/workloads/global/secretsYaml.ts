@@ -17,60 +17,49 @@ export function generateSecretsYaml(ctx: GeneratorContext): void {
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# SECRETS SERVICE
+# SECRETS - GLOBAL
 # ==============================================================================
 #
-# Secrets management and encryption.
-# Location: ${options.primaryRegion}/zone-${options.primaryZone}
+# Secrets management and encryption for the platform.
 #
 # ==============================================================================
 
-scope: global
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: secrets                     # What this service provides
-implementation: vault             # vault | infisical (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 1.17 | Supported: 1.17, 1.16, 1.15
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: vault-01
-    vm_id: 150
-    flavor: standard
-    image: debian-12
-    host: ${primaryNodePrefix}-01
+services:
+  # ============================================================================
+  # SECRETS
+  # ============================================================================
+  - role: secrets
+    scope: global
+    implementation: vault         # vault | infisical
+    # Version: 1.17 | Supported: 1.17, 1.16, 1.15
+    instances:
+      - name: vault-01
+        vm_id: 150
+        flavor: standard
+        image: debian-12
+        host: ${primaryNodePrefix}-01
 ${!isLocal ? `
-  - name: vault-02
-    vm_id: 151
-    flavor: standard
-    image: debian-12
-    host: ${primaryNodePrefix}-02` : ""}
+      - name: vault-02
+        vm_id: 151
+        flavor: standard
+        image: debian-12
+        host: ${primaryNodePrefix}-02` : ""}
+    overwrite_config:
+      # ui: true
+      # log_level: info
+      # max_lease_ttl: 768h
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/secrets/vault
+# See: https://docs.soverstack.io/workloads/secrets
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${primaryNodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # vault:
-  #   ui: true
-  #   log_level: info
-  #   max_lease_ttl: 768h
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

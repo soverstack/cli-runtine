@@ -28,55 +28,44 @@ export function generateSiemYaml({ ctx, region }: SiemYamlOptions): void {
   }
 
   const content = `# ==============================================================================
-# SIEM SERVICE - ${region.name.toUpperCase()}
+# SIEM - ${region.name.toUpperCase()}
 # ==============================================================================
 #
 # Security Information and Event Management.
-# Location: ${region.name}/zone-${primaryZone}
 #
 # ==============================================================================
 
-scope: regional
-region: ${region.name}
+services:
+  # ============================================================================
+  # SIEM
+  # ============================================================================
+  - role: siem
+    scope: regional
+    region: ${region.name}
+    implementation: wazuh         # wazuh | elastic-siem | splunk
+    # Version: 4.8 | Supported: 4.8, 4.7
+    instances:
+      - name: wazuh-${region.name}-01
+        vm_id: 130
+        flavor: large
+        image: debian-12
+        host: ${nodePrefix}-02
+    overwrite_config:
+      # indexer_replicas: 1
+      # log_retention: 90d
+      # vulnerability_detection: true
 
 # ------------------------------------------------------------------------------
-# SERVICE DEFINITION
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-
-role: siem                        # What this service provides
-implementation: wazuh             # wazuh | elastic-siem (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 4.8 | Supported: 4.8, 4.7
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: wazuh-${region.name}-01
-    vm_id: 130
-    flavor: large
-    image: debian-12
-    host: ${nodePrefix}-02
-
-# ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/siem/wazuh
+# See: https://docs.soverstack.io/workloads/siem
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # wazuh:
-  #   indexer_replicas: 1
-  #   log_retention: 90d
-  #   vulnerability_detection: true
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

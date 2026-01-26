@@ -29,62 +29,51 @@ export function generateStorageYaml({ ctx, region, datacenter }: StorageYamlOpti
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# STORAGE SERVICE - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
+# STORAGE - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
 # ==============================================================================
 #
 # S3-compatible object storage.
-# Location: ${region.name}/${datacenter.fullName} (Hub)
 #
 # ==============================================================================
 
-scope: zonal
-region: ${region.name}
-datacenter: ${datacenter.fullName}
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: storage                     # What this service provides
-implementation: minio             # minio | ceph-rgw (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 2024-07 | Supported: 2024-07, 2024-01
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: minio-${region.name}-01
-    vm_id: 400
-    flavor: large
-    image: debian-12
-    host: ${nodePrefix}-01
+services:
+  # ============================================================================
+  # STORAGE
+  # ============================================================================
+  - role: storage
+    scope: zonal
+    region: ${region.name}
+    datacenter: ${datacenter.fullName}
+    implementation: minio         # minio | ceph-rgw | seaweedfs
+    # Version: 2024-07 | Supported: 2024-07, 2024-01
+    instances:
+      - name: minio-${region.name}-01
+        vm_id: 400
+        flavor: large
+        image: debian-12
+        host: ${nodePrefix}-01
 ${!isLocal ? `
-  - name: minio-${region.name}-02
-    vm_id: 401
-    flavor: large
-    image: debian-12
-    host: ${nodePrefix}-02` : ""}
+      - name: minio-${region.name}-02
+        vm_id: 401
+        flavor: large
+        image: debian-12
+        host: ${nodePrefix}-02` : ""}
+    overwrite_config:
+      # console_port: 9001
+      # erasure_code: true
+      # browser: true
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/storage/minio
+# See: https://docs.soverstack.io/workloads/storage
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: storage
-  #
-  # minio:
-  #   console_port: 9001
-  #   erasure_code: true
-  #   browser: true
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

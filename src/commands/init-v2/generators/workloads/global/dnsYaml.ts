@@ -21,21 +21,15 @@ export function generateDnsYaml(ctx: GeneratorContext): void {
 # ==============================================================================
 #
 # Authoritative DNS servers with load balancing.
-# Location: ${options.primaryRegion}/zone-${options.primaryZone}
 #
 # ==============================================================================
-
-scope: global
-
-# ------------------------------------------------------------------------------
-# SERVICES
-# ------------------------------------------------------------------------------
 
 services:
   # ============================================================================
   # DNS AUTHORITATIVE
   # ============================================================================
   - role: dns-authoritative
+    scope: global
     implementation: powerdns      # powerdns | bind | knot
     # Version: 4.9 | Supported: 4.9, 4.8, 4.7
     instances:
@@ -64,6 +58,7 @@ ${!isLocal ? `
   # DNS LOADBALANCER
   # ============================================================================
   - role: dns-loadbalancer
+    scope: global
     implementation: dnsdist       # dnsdist | haproxy
     # Version: 1.9 | Supported: 1.9, 1.8, 1.7
     instances:

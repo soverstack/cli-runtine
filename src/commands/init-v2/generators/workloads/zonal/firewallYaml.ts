@@ -33,62 +33,51 @@ export function generateFirewallYaml({ ctx, region, datacenter }: FirewallYamlOp
   const vmIdBase = 10 + zoneIndex * 10;
 
   const content = `# ==============================================================================
-# FIREWALL SERVICE - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
+# FIREWALL - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
 # ==============================================================================
 #
 # Network firewall and routing.
-# Location: ${region.name}/${datacenter.fullName}
 #
 # ==============================================================================
 
-scope: zonal
-region: ${region.name}
-datacenter: ${datacenter.fullName}
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: firewall                    # What this service provides
-implementation: vyos              # vyos | opnsense (coming soon) | pfsense (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 1.4 | Supported: 1.4, 1.3
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: vyos-${region.name}-${datacenter.name}-01
-    vm_id: ${vmIdBase}
-    flavor: small
-    image: vyos-1.4
-    host: ${nodePrefix}-01
+services:
+  # ============================================================================
+  # FIREWALL
+  # ============================================================================
+  - role: firewall
+    scope: zonal
+    region: ${region.name}
+    datacenter: ${datacenter.fullName}
+    implementation: vyos          # vyos | opnsense | pfsense
+    # Version: 1.4 | Supported: 1.4, 1.3
+    instances:
+      - name: vyos-${region.name}-${datacenter.name}-01
+        vm_id: ${vmIdBase}
+        flavor: small
+        image: vyos-1.4
+        host: ${nodePrefix}-01
 ${!isLocal ? `
-  - name: vyos-${region.name}-${datacenter.name}-02
-    vm_id: ${vmIdBase + 1}
-    flavor: small
-    image: vyos-1.4
-    host: ${nodePrefix}-02` : ""}
+      - name: vyos-${region.name}-${datacenter.name}-02
+        vm_id: ${vmIdBase + 1}
+        flavor: small
+        image: vyos-1.4
+        host: ${nodePrefix}-02` : ""}
+    overwrite_config:
+      # conntrack_table_size: 262144
+      # vrrp_preempt: true
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/firewall/vyos
+# See: https://docs.soverstack.io/workloads/firewall
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: management
   #   - vlan: public
-  #
-  # vyos:
-  #   conntrack_table_size: 262144
-  #   vrrp_preempt: true
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

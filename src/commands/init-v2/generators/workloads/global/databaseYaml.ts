@@ -25,68 +25,52 @@ export function generateDatabaseYaml(ctx: GeneratorContext): void {
   const instances = Array.from({ length: nodeCount }, (_, i) => {
     const num = String(i + 1).padStart(2, "0");
     const name = i === 0 ? "db-primary" : `db-replica-${num}`;
-    return `  - name: ${name}
-    vm_id: ${250 + i}
-    flavor: large
-    image: debian-12
-    host: ${primaryNodePrefix}-${num}`;
+    return `      - name: ${name}
+        vm_id: ${250 + i}
+        flavor: large
+        image: debian-12
+        host: ${primaryNodePrefix}-${num}`;
   }).join("\n\n");
 
   const content = `# ==============================================================================
-# DATABASE SERVICE
+# DATABASE - GLOBAL
 # ==============================================================================
 #
-# Global database cluster - deployed on control plane.
-# Location: ${options.primaryRegion}/zone-${options.primaryZone}
+# Global database cluster for platform services.
 #
 # ==============================================================================
 
-scope: global
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: database                    # What this service provides
-implementation: postgresql        # postgresql | mysql (coming soon) | mariadb (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 16 | Supported: 16, 15, 14
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
+services:
+  # ============================================================================
+  # DATABASE
+  # ============================================================================
+  - role: database
+    scope: global
+    implementation: postgresql    # postgresql | mysql | mariadb
+    # Version: 16 | Supported: 16, 15, 14
+    instances:
 ${instances}
+    databases:
+      - name: keycloak
+        owner: keycloak
+      - name: grafana
+        owner: grafana
+    overwrite_config:
+      # max_connections: 200
+      # shared_buffers: 512MB
+      # work_mem: 16MB
 
 # ------------------------------------------------------------------------------
-# DATABASES
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-
-databases:
-  - name: keycloak
-    owner: keycloak
-  - name: grafana
-    owner: grafana
-
-# ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/database/postgresql
+# See: https://docs.soverstack.io/workloads/database
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${primaryNodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # postgresql:
-  #   max_connections: 200
-  #   shared_buffers: 512MB
-  #   work_mem: 16MB
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

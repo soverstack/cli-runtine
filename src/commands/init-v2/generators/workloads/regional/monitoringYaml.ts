@@ -32,18 +32,13 @@ export function generateMonitoringYaml({ ctx, region }: MonitoringYamlOptions): 
 #
 # ==============================================================================
 
-scope: regional
-region: ${region.name}
-
-# ------------------------------------------------------------------------------
-# SERVICES
-# ------------------------------------------------------------------------------
-
 services:
   # ============================================================================
   # METRICS
   # ============================================================================
   - role: metrics
+    scope: regional
+    region: ${region.name}
     implementation: prometheus    # prometheus | victoriametrics | mimir
     # Version: 2.53 | Supported: 2.53, 2.52, 2.51
     instances:
@@ -61,6 +56,8 @@ ${!isLocal ? `
   # LOGS
   # ============================================================================
   - role: logs
+    scope: regional
+    region: ${region.name}
     implementation: loki          # loki | elasticsearch | graylog
     # Version: 3.1 | Supported: 3.1, 3.0, 2.9
     instances:
@@ -77,6 +74,8 @@ ${!isLocal ? `
   # ALERTING
   # ============================================================================
   - role: alerting
+    scope: regional
+    region: ${region.name}
     implementation: alertmanager  # alertmanager | grafana-alerting
     # Version: 0.27 | Supported: 0.27, 0.26, 0.25
     instances:
@@ -93,6 +92,8 @@ ${!isLocal ? `
   # DASHBOARDS
   # ============================================================================
   - role: dashboards
+    scope: regional
+    region: ${region.name}
     implementation: grafana       # grafana | kibana
     # Version: 11.1 | Supported: 11.1, 11.0, 10.4
     instances:

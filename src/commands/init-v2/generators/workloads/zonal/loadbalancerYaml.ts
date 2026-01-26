@@ -33,63 +33,52 @@ export function generateLoadbalancerYaml({ ctx, region, datacenter }: Loadbalanc
   const vmIdBase = 15 + zoneIndex * 10;
 
   const content = `# ==============================================================================
-# LOADBALANCER SERVICE - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
+# LOADBALANCER - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
 # ==============================================================================
 #
 # HTTP/TCP load balancing and reverse proxy.
-# Location: ${region.name}/${datacenter.fullName}
 #
 # ==============================================================================
 
-scope: zonal
-region: ${region.name}
-datacenter: ${datacenter.fullName}
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: loadbalancer                # What this service provides
-implementation: haproxy           # haproxy | nginx (coming soon) | traefik (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 3.0 | Supported: 3.0, 2.9, 2.8
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: haproxy-${region.name}-${datacenter.name}-01
-    vm_id: ${vmIdBase}
-    flavor: small
-    image: debian-12
-    host: ${nodePrefix}-01
+services:
+  # ============================================================================
+  # LOADBALANCER
+  # ============================================================================
+  - role: loadbalancer
+    scope: zonal
+    region: ${region.name}
+    datacenter: ${datacenter.fullName}
+    implementation: haproxy       # haproxy | nginx | traefik
+    # Version: 3.0 | Supported: 3.0, 2.9, 2.8
+    instances:
+      - name: haproxy-${region.name}-${datacenter.name}-01
+        vm_id: ${vmIdBase}
+        flavor: small
+        image: debian-12
+        host: ${nodePrefix}-01
 ${!isLocal ? `
-  - name: haproxy-${region.name}-${datacenter.name}-02
-    vm_id: ${vmIdBase + 1}
-    flavor: small
-    image: debian-12
-    host: ${nodePrefix}-02` : ""}
+      - name: haproxy-${region.name}-${datacenter.name}-02
+        vm_id: ${vmIdBase + 1}
+        flavor: small
+        image: debian-12
+        host: ${nodePrefix}-02` : ""}
+    overwrite_config:
+      # maxconn: 50000
+      # stats_port: 8404
+      # ssl_default_bind_ciphers: "ECDHE+AESGCM"
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/loadbalancer/haproxy
+# See: https://docs.soverstack.io/workloads/loadbalancer
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: management
   #   - vlan: public
-  #
-  # haproxy:
-  #   maxconn: 50000
-  #   stats_port: 8404
-  #   ssl_default_bind_ciphers: "ECDHE+AESGCM"
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

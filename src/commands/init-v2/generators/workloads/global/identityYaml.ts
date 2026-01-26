@@ -17,60 +17,49 @@ export function generateIdentityYaml(ctx: GeneratorContext): void {
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# IDENTITY SERVICE
+# IDENTITY - GLOBAL
 # ==============================================================================
 #
-# Identity management and SSO.
-# Location: ${options.primaryRegion}/zone-${options.primaryZone}
+# Identity management and SSO for the platform.
 #
 # ==============================================================================
 
-scope: global
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: identity                    # What this service provides
-implementation: keycloak          # keycloak | authentik (coming soon) | zitadel (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 25 | Supported: 25, 24, 23
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: keycloak-01
-    vm_id: 200
-    flavor: large
-    image: debian-12
-    host: ${primaryNodePrefix}-01
+services:
+  # ============================================================================
+  # IDENTITY
+  # ============================================================================
+  - role: identity
+    scope: global
+    implementation: keycloak      # keycloak | authentik | zitadel
+    # Version: 25 | Supported: 25, 24, 23
+    instances:
+      - name: keycloak-01
+        vm_id: 200
+        flavor: large
+        image: debian-12
+        host: ${primaryNodePrefix}-01
 ${!isLocal ? `
-  - name: keycloak-02
-    vm_id: 201
-    flavor: large
-    image: debian-12
-    host: ${primaryNodePrefix}-02` : ""}
+      - name: keycloak-02
+        vm_id: 201
+        flavor: large
+        image: debian-12
+        host: ${primaryNodePrefix}-02` : ""}
+    overwrite_config:
+      # http_relative_path: /auth
+      # proxy_mode: edge
+      # metrics_enabled: true
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/identity/keycloak
+# See: https://docs.soverstack.io/workloads/identity
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${primaryNodePrefix}-01
   #
   # networks:
   #   - vlan: management
-  #
-  # keycloak:
-  #   http_relative_path: /auth
-  #   proxy_mode: edge
-  #   metrics_enabled: true
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

@@ -23,62 +23,51 @@ export function generateBastionYaml({ ctx, region }: BastionYamlOptions): void {
   const isLocal = options.infrastructureTier === "local";
 
   const content = `# ==============================================================================
-# BASTION SERVICE - ${region.name.toUpperCase()}
+# BASTION - ${region.name.toUpperCase()}
 # ==============================================================================
 #
 # Zero-trust access to SSH, Kubernetes, and databases.
-# Location: ${region.name}/zone-${primaryZone}
 #
 # ==============================================================================
 
-scope: regional
-region: ${region.name}
-
-# ------------------------------------------------------------------------------
-# SERVICE DEFINITION
-# ------------------------------------------------------------------------------
-
-role: bastion                     # What this service provides
-implementation: teleport          # teleport | boundary (coming soon)
-
-# Version managed by Soverstack - only tested versions allowed
-# Current: 16 | Supported: 16, 15, 14
-
-# ------------------------------------------------------------------------------
-# INSTANCES
-# ------------------------------------------------------------------------------
-
-instances:
-  - name: teleport-${region.name}-01
-    vm_id: 120
-    flavor: standard
-    image: debian-12
-    host: ${nodePrefix}-01
+services:
+  # ============================================================================
+  # BASTION
+  # ============================================================================
+  - role: bastion
+    scope: regional
+    region: ${region.name}
+    implementation: teleport      # teleport | boundary | guacamole
+    # Version: 16 | Supported: 16, 15, 14
+    instances:
+      - name: teleport-${region.name}-01
+        vm_id: 120
+        flavor: standard
+        image: debian-12
+        host: ${nodePrefix}-01
 ${!isLocal ? `
-  - name: teleport-${region.name}-02
-    vm_id: 121
-    flavor: standard
-    image: debian-12
-    host: ${nodePrefix}-02` : ""}
+      - name: teleport-${region.name}-02
+        vm_id: 121
+        flavor: standard
+        image: debian-12
+        host: ${nodePrefix}-02` : ""}
+    overwrite_config:
+      # cluster_name: ${region.name}-teleport
+      # session_recording: node
+      # audit_log_retention: 365d
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION OVERRIDES (optional)
+# GLOBAL OVERRIDES (optional)
 # ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/bastion/teleport
+# See: https://docs.soverstack.io/workloads/bastion
 
 overwrite_config:
   # scheduling:
   #   strategy: auto                # manual (default) | auto
-  #   host: ${nodePrefix}-01
   #
   # networks:
   #   - vlan: management
   #   - vlan: public
-  #
-  # teleport:
-  #   cluster_name: ${region.name}-teleport
-  #   session_recording: node
-  #   audit_log_retention: 365d
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
