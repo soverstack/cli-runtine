@@ -45,8 +45,7 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: minio         # minio | ceph-rgw | seaweedfs
-    version: "2024.07"
-    supported_versions: ["2024.07", "2024.06", "2024.01"]
+    version: "2024.07"          # 2024.07, 2024.06, 2024.01
     instances:
       - name: minio-${region.name}-01
         vm_id: 400

@@ -31,8 +31,7 @@ services:
   - role: identity
     scope: global
     implementation: keycloak      # keycloak | authentik | zitadel
-    version: "25"
-    supported_versions: ["25", "24", "23"]
+    version: "25"               # 25, 24, 23
     instances:
       - name: keycloak-01
         vm_id: 200

@@ -31,8 +31,7 @@ services:
   - role: dns-authoritative
     scope: global
     implementation: powerdns      # powerdns | bind | knot
-    version: "4.9"
-    supported_versions: ["4.9", "4.8", "4.7"]
+    version: "4.9"              # 4.9, 4.8, 4.7
     instances:
       - name: pdns-01
         vm_id: 50
@@ -61,8 +60,7 @@ ${!isLocal ? `
   - role: dns-loadbalancer
     scope: global
     implementation: dnsdist       # dnsdist | haproxy
-    version: "1.9"
-    supported_versions: ["1.9", "1.8", "1.7"]
+    version: "1.9"              # 1.9, 1.8, 1.7
     instances:
       - name: dnsdist-01
         vm_id: 60

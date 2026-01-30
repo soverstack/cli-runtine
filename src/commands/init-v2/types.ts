@@ -241,7 +241,6 @@ interface BaseService<R extends ServiceRole> {
   role: R;
   implementation: ImplementationMap[R];
   version: string;
-  supported_versions: string[];
   instances: ServiceInstance[];
   overwrite_config?: Record<string, unknown>;
 }

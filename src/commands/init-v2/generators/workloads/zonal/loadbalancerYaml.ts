@@ -49,8 +49,7 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: haproxy       # haproxy | nginx | traefik
-    version: "3.0"
-    supported_versions: ["3.0", "2.9", "2.8"]
+    version: "3.0"              # 3.0, 2.9, 2.8
     instances:
       - name: haproxy-${region.name}-${datacenter.name}-01
         vm_id: ${vmIdBase}

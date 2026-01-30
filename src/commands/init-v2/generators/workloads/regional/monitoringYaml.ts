@@ -40,8 +40,7 @@ services:
     scope: regional
     region: ${region.name}
     implementation: prometheus    # prometheus | victoriametrics | mimir
-    version: "2.53"
-    supported_versions: ["2.53", "2.52", "2.51"]
+    version: "2.53"             # 2.53, 2.52, 2.51
     instances:
       - name: prometheus-${region.name}-01
         vm_id: 300
@@ -60,8 +59,7 @@ ${!isLocal ? `
     scope: regional
     region: ${region.name}
     implementation: loki          # loki | elasticsearch | graylog
-    version: "3.1"
-    supported_versions: ["3.1", "3.0", "2.9"]
+    version: "3.1"              # 3.1, 3.0, 2.9
     instances:
       - name: loki-${region.name}-01
         vm_id: 320
@@ -79,8 +77,7 @@ ${!isLocal ? `
     scope: regional
     region: ${region.name}
     implementation: alertmanager  # alertmanager | grafana-alerting
-    version: "0.27"
-    supported_versions: ["0.27", "0.26", "0.25"]
+    version: "0.27"             # 0.27, 0.26, 0.25
     instances:
       - name: alertmanager-${region.name}-01
         vm_id: 330
@@ -98,8 +95,7 @@ ${!isLocal ? `
     scope: regional
     region: ${region.name}
     implementation: grafana       # grafana | kibana
-    version: "11.1"
-    supported_versions: ["11.1", "11.0", "10.4"]
+    version: "11.1"             # 11.1, 11.0, 10.4
     instances:
       - name: grafana-01
         vm_id: 310

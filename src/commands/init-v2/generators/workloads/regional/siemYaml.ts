@@ -43,8 +43,7 @@ services:
     scope: regional
     region: ${region.name}
     implementation: wazuh         # wazuh | elastic-siem | splunk
-    version: "4.8"
-    supported_versions: ["4.8", "4.7"]
+    version: "4.8"              # 4.8, 4.7
     instances:
       - name: wazuh-${region.name}-01
         vm_id: 130
