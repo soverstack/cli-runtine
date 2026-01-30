@@ -49,7 +49,8 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: vyos          # vyos | opnsense | pfsense
-    # Version: 1.4 | Supported: 1.4, 1.3
+    version: "1.4"
+    supported_versions: ["1.4", "1.3"]
     instances:
       - name: vyos-${region.name}-${datacenter.name}-01
         vm_id: ${vmIdBase}

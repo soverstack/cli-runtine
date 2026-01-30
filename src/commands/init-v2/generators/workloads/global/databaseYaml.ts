@@ -47,7 +47,8 @@ services:
   - role: database
     scope: global
     implementation: postgresql    # postgresql | mysql | mariadb
-    # Version: 16 | Supported: 16, 15, 14
+    version: "16"
+    supported_versions: ["16", "15", "14"]
     instances:
 ${instances}
     databases:

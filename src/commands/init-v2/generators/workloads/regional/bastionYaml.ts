@@ -38,7 +38,8 @@ services:
     scope: regional
     region: ${region.name}
     implementation: teleport      # teleport | boundary | guacamole
-    # Version: 16 | Supported: 16, 15, 14
+    version: "16"
+    supported_versions: ["16", "15", "14"]
     instances:
       - name: teleport-${region.name}-01
         vm_id: 120

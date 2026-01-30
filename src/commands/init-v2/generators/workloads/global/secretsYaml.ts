@@ -31,7 +31,8 @@ services:
   - role: secrets
     scope: global
     implementation: vault         # vault | infisical
-    # Version: 1.17 | Supported: 1.17, 1.16, 1.15
+    version: "1.17"
+    supported_versions: ["1.17", "1.16", "1.15"]
     instances:
       - name: vault-01
         vm_id: 150

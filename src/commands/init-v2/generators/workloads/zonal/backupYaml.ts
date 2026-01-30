@@ -44,7 +44,8 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: pbs           # pbs | restic | borg
-    # Version: 3.2 | Supported: 3.2, 3.1, 3.0
+    version: "3.2"
+    supported_versions: ["3.2", "3.1", "3.0"]
     instances:
       - name: pbs-${region.name}-01
         vm_id: 410
