@@ -48,18 +48,6 @@ ${!isLocal ? `
       # ui: true
       # log_level: info
       # max_lease_ttl: 768h
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/secrets
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

@@ -54,18 +54,6 @@ services:
       # indexer_replicas: 1
       # log_retention: 90d
       # vulnerability_detection: true
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/siem
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

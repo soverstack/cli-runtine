@@ -55,19 +55,6 @@ ${!isLocal ? `
       # cluster_name: ${region.name}-teleport
       # session_recording: node
       # audit_log_retention: 365d
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/bastion
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
-  #   - vlan: public
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

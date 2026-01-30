@@ -65,19 +65,6 @@ ${!isLocal ? `
     overwrite_config:
       # conntrack_table_size: 262144
       # vrrp_preempt: true
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/firewall
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
-  #   - vlan: public
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

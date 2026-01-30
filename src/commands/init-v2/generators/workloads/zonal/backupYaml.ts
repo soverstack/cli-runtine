@@ -59,18 +59,6 @@ services:
       # datastore_path: /mnt/backups
       # verify_new: true
       # notify_email: admin@example.com
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/backup
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: backup
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

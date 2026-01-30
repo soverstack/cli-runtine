@@ -105,19 +105,7 @@ ${!isLocal ? `
     overwrite_config:
       # anonymous_enabled: false
       # auth_generic_oauth: true
-` : ""}
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/monitoring
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
-`;
+` : ""}`;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
 }

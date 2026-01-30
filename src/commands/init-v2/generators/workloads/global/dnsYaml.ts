@@ -77,20 +77,7 @@ ${!isLocal ? `
       # cache_size: 10000
       # max_tcp_clients: 1000
       # webserver_port: 8083
-` : ""}
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/dns
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
-  #   - vlan: public
-`;
+` : ""}`;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
 }

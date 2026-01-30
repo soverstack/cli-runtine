@@ -59,18 +59,6 @@ ${instances}
       # max_connections: 200
       # shared_buffers: 512MB
       # work_mem: 16MB
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/database
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

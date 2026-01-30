@@ -66,19 +66,6 @@ ${!isLocal ? `
       # maxconn: 50000
       # stats_port: 8404
       # ssl_default_bind_ciphers: "ECDHE+AESGCM"
-
-# ------------------------------------------------------------------------------
-# GLOBAL OVERRIDES (optional)
-# ------------------------------------------------------------------------------
-# See: https://docs.soverstack.io/workloads/loadbalancer
-
-overwrite_config:
-  # scheduling:
-  #   strategy: auto                # manual (default) | auto
-  #
-  # networks:
-  #   - vlan: management
-  #   - vlan: public
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
