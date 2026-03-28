@@ -1,11 +1,11 @@
 /**
- * Soverstack Validate V2 Command
+ * Soverstack Validate Command
  *
- * Validates the v2 project structure (inventory/ + workloads/).
+ * Validates the project structure (inventory/ + workloads/).
  *
  * Usage:
- *   soverstack validate-v2 [path]
- *   soverstack validate-v2 ./my-project
+ *   soverstack validate [path]
+ *   soverstack validate ./my-project
  */
 
 import { Command } from "commander";

@@ -221,7 +221,7 @@ import type {
   InventoryKnockd,
   InventoryRotationPolicy,
   InventoryCeph,
-} from "../../init-v2/types";
+} from "../../init/types";
 
 /**
  * Load full inventory with merged datacenter data

@@ -256,7 +256,7 @@ export {
   DC_BLOCK,
   ROLE_OFFSETS,
   vmId,
-} from "../../commands/init-v2/types";
+} from "../../commands/init/types";
 
 /** Validate that a vm_id is in the correct scope range */
 export function isVmIdInScope(id: number, scope: string): boolean {
@@ -305,7 +305,7 @@ export const REQUIRED_WORKLOADS: Record<string, RequiredWorkloads> = {
 // VALID VALUES
 // ════════════════════════════════════════════════════════════════════════════
 
-import { ImplementationMap, VERSION_CATALOG } from "../../commands/init-v2/types";
+import { ImplementationMap, VERSION_CATALOG } from "../../commands/init/types";
 
 export const VALID_TIERS = ["local", "production", "enterprise"];
 export const VALID_COMPLIANCE = ["startup", "business", "enterprise", "regulated"];

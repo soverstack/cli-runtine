@@ -16,7 +16,7 @@ import {
   ZONE_ROLES,
   HUB_ROLES,
 } from "../types";
-import { VERSION_CATALOG } from "../../../commands/init-v2/types";
+import { VERSION_CATALOG } from "../../../commands/init/types";
 
 interface WorkloadContext {
   filePath: string; // relative path for error messages

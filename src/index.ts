@@ -4,8 +4,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 // Import des commandes
-import { initCommand } from './commands/init-v2';
-import { validateCommand } from './commands/validate-v2';
+import { initCommand } from './commands/init';
+import { validateCommand } from './commands/validate';
 import { generateSshKeysCommand } from './commands/generate-ssh';
 import { addCommand } from './commands/add';
 import { generateCommand } from './commands/generate';

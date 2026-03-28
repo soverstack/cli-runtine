@@ -1,11 +1,11 @@
 /**
- * Soverstack Init V2 Command
+ * Soverstack Init Command
  *
- * New structure: inventory/ + workloads/
+ * Structure: inventory/ + workloads/
  *
  * Usage:
- *   soverstack init-v2 <project-name>
- *   soverstack init-v2 my-project --domain example.com --regions eu,us
+ *   soverstack init <project-name>
+ *   soverstack init my-project --domain example.com --regions eu,us
  */
 
 import { Command } from "commander";

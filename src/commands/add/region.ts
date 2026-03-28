@@ -12,7 +12,7 @@ import fs from "fs";
 import yaml from "js-yaml";
 
 import { scanProject, regionExists, findProjectRoot, ScannedRegion } from "./utils/scanner";
-import { RegionConfig, GeneratorContext, getDatacenters } from "../init-v2/types";
+import { RegionConfig, GeneratorContext, getDatacenters } from "../init/types";
 import { InfrastructureTierType } from "@/types";
 
 interface PlatformConfig {
@@ -35,7 +35,7 @@ import {
   generateLoadbalancerYaml,
   generateStorageYaml,
   generateBackupYaml,
-} from "../init-v2/generators";
+} from "../init/generators";
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMMAND
@@ -321,7 +321,7 @@ export const addRegionCommand = new Command("region")
       // Generate SSH keys if requested
       if (generateSsh) {
         console.log(chalk.gray("    • .ssh/"));
-        const { generateSshKeys } = await import("../init-v2/generators");
+        const { generateSshKeys } = await import("../init/generators");
         const dcList = datacenters.map((dc) => ({ region: regionConfig, dc }));
         generateSshKeys(ctx, dcList);
       }

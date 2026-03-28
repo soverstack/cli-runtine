@@ -28,7 +28,7 @@ import {
   generateSshKeyPair,
   checkExistingSshKeys,
   SSH_USERS,
-} from "../init-v2/generators";
+} from "../init/generators";
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMMAND
@@ -59,7 +59,7 @@ export const generateSshCommand = new Command("ssh")
 
       if (project.regions.length === 0) {
         console.log(chalk.red("  Error: No regions found in inventory/."));
-        console.log(chalk.gray("  Run 'soverstack init-v2' first."));
+        console.log(chalk.gray("  Run 'soverstack init' first."));
         process.exit(1);
       }
 

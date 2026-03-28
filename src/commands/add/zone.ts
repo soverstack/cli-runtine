@@ -18,7 +18,7 @@ import {
   findProjectRoot,
   getNextZoneIndex,
 } from "./utils/scanner";
-import { RegionConfig, DatacenterConfig, GeneratorContext } from "../init-v2/types";
+import { RegionConfig, DatacenterConfig, GeneratorContext } from "../init/types";
 import { InfrastructureTierType } from "@/types";
 
 interface PlatformConfig {
@@ -34,7 +34,7 @@ import {
   generateSshYaml,
   generateFirewallYaml,
   generateLoadbalancerYaml,
-} from "../init-v2/generators";
+} from "../init/generators";
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMMAND
@@ -268,7 +268,7 @@ export const addZoneCommand = new Command("zone")
       // Generate SSH keys if requested
       if (generateSsh) {
         console.log(chalk.gray("    • .ssh/"));
-        const { generateSshKeys } = await import("../init-v2/generators");
+        const { generateSshKeys } = await import("../init/generators");
         const dcList = [{ region: regionConfig, dc: datacenterConfig }];
         generateSshKeys(ctx, dcList);
       }
