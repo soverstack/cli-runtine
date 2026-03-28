@@ -50,7 +50,7 @@ export function generateEnvFile(ctx: GeneratorContext): void {
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# BOOTSTRAP PASSWORDS (from your provider - Hetzner/OVH)
+# BOOTSTRAP PASSWORDS (from your bare-metal provider)
 # ------------------------------------------------------------------------------
 # Each server has its own root password provided at provisioning.
 # After bootstrap, Soverstack deploys SSH keys and disables password auth.
@@ -63,26 +63,39 @@ ${Object.entries(nodesByDc)
   .join("\n\n")}
 
 # ------------------------------------------------------------------------------
-# DATABASE
+# DATABASE (postgresql, mysql, mariadb)
 # ------------------------------------------------------------------------------
-POSTGRES_PASSWORD=""
+DATABASE_ADMIN_PASSWORD=""
 
 # ------------------------------------------------------------------------------
-# SECURITY
+# SECRETS (vault, openbao, infisical)
 # ------------------------------------------------------------------------------
-VAULT_ROOT_TOKEN=""
-KEYCLOAK_ADMIN_PASSWORD=""
+SECRETS_ROOT_TOKEN=""
 
 # ------------------------------------------------------------------------------
-# OBSERVABILITY
+# IDENTITY (keycloak, authentik, zitadel)
 # ------------------------------------------------------------------------------
-GRAFANA_ADMIN_PASSWORD=""
+IDENTITY_ADMIN_PASSWORD=""
 
 # ------------------------------------------------------------------------------
-# STORAGE (Hub)
+# MESH (headscale, netbird, nebula)
 # ------------------------------------------------------------------------------
-MINIO_ROOT_PASSWORD=""
-PBS_ADMIN_PASSWORD=""
+MESH_API_KEY=""
+
+# ------------------------------------------------------------------------------
+# DASHBOARDS (grafana, kibana)
+# ------------------------------------------------------------------------------
+DASHBOARDS_ADMIN_PASSWORD=""
+
+# ------------------------------------------------------------------------------
+# STORAGE (minio, ceph-rgw, seaweedfs)
+# ------------------------------------------------------------------------------
+STORAGE_ROOT_PASSWORD=""
+
+# ------------------------------------------------------------------------------
+# BACKUP (pbs, restic, borg)
+# ------------------------------------------------------------------------------
+BACKUP_ADMIN_PASSWORD=""
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

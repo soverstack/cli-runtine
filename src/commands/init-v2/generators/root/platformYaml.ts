@@ -62,7 +62,7 @@ ${DEFAULT_IMAGES.map(
 # ------------------------------------------------------------------------------
 # DEFAULTS
 # ------------------------------------------------------------------------------
-# Where global services are deployed (Vault, Keycloak, PostgreSQL, etc.)
+# Where global services are deployed (secrets, identity, database, etc.)
 
 defaults:
   global_placement:
@@ -72,8 +72,9 @@ defaults:
 # ------------------------------------------------------------------------------
 # FLAVORS (VM Sizes)
 # ------------------------------------------------------------------------------
-# Centralized instance type definitions.
-# Reference in workloads: flavor: standard
+# Compute profiles with default disk. Services can override disk size.
+# Usage: flavor: standard          (uses default 32G)
+#        flavor: small, disk: 500G (override disk)
 
 flavors:
 ${DEFAULT_FLAVORS.map(

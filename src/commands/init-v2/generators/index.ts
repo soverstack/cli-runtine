@@ -33,6 +33,7 @@ export { generateDatabaseYaml } from "./workloads/global/databaseYaml";
 export { generateDnsYaml } from "./workloads/global/dnsYaml";
 export { generateSecretsYaml } from "./workloads/global/secretsYaml";
 export { generateIdentityYaml } from "./workloads/global/identityYaml";
+export { generateMeshYaml } from "./workloads/global/meshYaml";
 
 // ════════════════════════════════════════════════════════════════════════════
 // WORKLOADS - REGIONAL

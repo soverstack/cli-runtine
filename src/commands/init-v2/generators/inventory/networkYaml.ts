@@ -171,16 +171,12 @@ public_ips:
   }
 
   const content = `# ==============================================================================
-# NETWORK: ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
+# NETWORK
 # ==============================================================================
 #
-# Network configuration for this datacenter.
-# Type: ${datacenter.type.toUpperCase()}${isControlPlane ? " (Control Plane)" : ""}
+# Network configuration (VLANs, public IPs).
 #
 # ==============================================================================
-
-datacenter: ${datacenter.fullName}
-region: ${region.name}
 
 # ------------------------------------------------------------------------------
 # VLANS

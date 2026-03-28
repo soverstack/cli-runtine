@@ -1,5 +1,5 @@
 /**
- * Generate workloads/regional/{region}/bastion.yaml - Teleport
+ * Generate workloads/regional/{region}/bastion.yaml
  */
 
 import fs from "fs";
@@ -40,15 +40,15 @@ services:
     implementation: teleport      # teleport | boundary | guacamole
     version: "16"               # 16, 15, 14
     instances:
-      - name: teleport-${region.name}-01
+      - name: bastion-${region.name}-01
         vm_id: 120
-        flavor: standard
+        flavor: small
         image: debian-12
         host: ${nodePrefix}-01
 ${!isLocal ? `
-      - name: teleport-${region.name}-02
+      - name: bastion-${region.name}-02
         vm_id: 121
-        flavor: standard
+        flavor: small
         image: debian-12
         host: ${nodePrefix}-02` : ""}
     overwrite_config:

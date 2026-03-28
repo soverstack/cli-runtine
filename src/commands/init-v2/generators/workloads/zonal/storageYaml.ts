@@ -1,5 +1,5 @@
 /**
- * Generate workloads/zonal/{region}/{hub}/storage.yaml - MinIO
+ * Generate workloads/zonal/{region}/{hub}/storage.yaml
  */
 
 import fs from "fs";
@@ -47,15 +47,17 @@ services:
     implementation: minio         # minio | ceph-rgw | seaweedfs
     version: "2024.07"          # 2024.07, 2024.06, 2024.01
     instances:
-      - name: minio-${region.name}-01
+      - name: storage-${region.name}-01
         vm_id: 400
-        flavor: large
+        flavor: standard
+        disk: 1000G
         image: debian-12
         host: ${nodePrefix}-01
 ${!isLocal ? `
-      - name: minio-${region.name}-02
+      - name: storage-${region.name}-02
         vm_id: 401
-        flavor: large
+        flavor: standard
+        disk: 1000G
         image: debian-12
         host: ${nodePrefix}-02` : ""}
     overwrite_config:

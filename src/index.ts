@@ -13,6 +13,8 @@ import { destroyCommand } from './commands/destroy';
 import { dnsUpdateCommand } from './commands/dns-update';
 import { graphCommand } from './commands/graph';
 import { generateSshKeysCommand } from './commands/generate-ssh';
+import { addCommand } from './commands/add';
+import { generateCommand } from './commands/generate';
 
 const program = new Command();
 
@@ -31,7 +33,9 @@ program.addCommand(applyCommand);
 program.addCommand(destroyCommand);
 program.addCommand(dnsUpdateCommand);
 program.addCommand(graphCommand);
-program.addCommand(generateSshKeysCommand);
+program.addCommand(generateSshKeysCommand); // Deprecated, kept for backward compatibility
+program.addCommand(addCommand);
+program.addCommand(generateCommand);
 
 // Gestion des erreurs globales
 process.on('unhandledRejection', (error: Error) => {

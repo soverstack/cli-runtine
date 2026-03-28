@@ -188,6 +188,9 @@ async function collectOptionsInteractively(
   console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
   console.log("");
 
+  const isLocal = phase1.tier === "local";
+  const createdHubs: { name: string; region: string }[] = [];
+
   for (const regionName of regionNameList) {
     const { zoneNames } = await inquirer.prompt([
       {
@@ -206,16 +209,55 @@ async function collectOptionsInteractively(
     ]);
 
     const zones = zoneNames.split(",").map((z: string) => z.trim());
-    regions.push({ name: regionName, zones });
+
+    // Hub selection (skip for local tier)
+    let hub: string | undefined;
+    if (!isLocal) {
+      if (createdHubs.length === 0) {
+        // First region - auto create hub
+        hub = `hub-${regionName}`;
+        createdHubs.push({ name: hub, region: regionName });
+        console.log(chalk.gray(`  → Hub: ${hub} (first hub, auto-created)`));
+      } else {
+        // Ask: create new or use existing?
+        const { hubChoice } = await inquirer.prompt([
+          {
+            type: "list",
+            name: "hubChoice",
+            message: `Hub for ${chalk.cyan(regionName)}:`,
+            choices: [
+              { name: `Create new hub (hub-${regionName})`, value: "new" },
+              ...createdHubs.map((h) => ({
+                name: `Use ${h.name} (from ${h.region})`,
+                value: h.name,
+              })),
+            ],
+          },
+        ]);
+
+        if (hubChoice === "new") {
+          hub = `hub-${regionName}`;
+          createdHubs.push({ name: hub, region: regionName });
+        } else {
+          hub = hubChoice;
+        }
+      }
+    }
+
+    regions.push({ name: regionName, zones, hub });
   }
 
   // Show created structure
-  const isLocal = phase1.tier === "local";
   console.log("");
   console.log(chalk.white("  Datacenters:"));
   regions.forEach((r) => {
-    if (!isLocal) {
-      console.log(chalk.gray(`    hub-${r.name}`) + chalk.dim(" (backup)"));
+    if (!isLocal && r.hub) {
+      const isOwn = r.hub === `hub-${r.name}`;
+      if (isOwn) {
+        console.log(chalk.gray(`    ${r.hub}`) + chalk.dim(" (backup)"));
+      } else {
+        console.log(chalk.gray(`    → uses ${r.hub}`) + chalk.dim(" (shared)"));
+      }
     }
     r.zones.forEach((z) => {
       console.log(chalk.white(`    zone-${z}`) + chalk.dim(` (${r.name})`));
@@ -311,10 +353,22 @@ async function collectOptionsInteractively(
   console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
   console.log(chalk.gray("  │  ") + chalk.white.bold("Datacenters:") + chalk.gray("                                                       │"));
   regions.forEach((r) => {
-    if (!isLocal) {
-      const hubLine = `    hub-${r.name} (backup)`.padEnd(53);
-      console.log(chalk.gray("  │  ") + chalk.dim(hubLine) + chalk.gray("│"));
+    // Region header
+    console.log(chalk.gray("  │  ") + chalk.white(`  ${r.name}:`.padEnd(53)) + chalk.gray("│"));
+
+    // Hub info (skip for local tier)
+    if (!isLocal && r.hub) {
+      const isOwnHub = r.hub === `hub-${r.name}`;
+      if (isOwnHub) {
+        const hubLine = `    ${r.hub} (backup)`.padEnd(53);
+        console.log(chalk.gray("  │  ") + chalk.dim(hubLine) + chalk.gray("│"));
+      } else {
+        const hubLine = `    → uses ${r.hub} (shared)`.padEnd(53);
+        console.log(chalk.gray("  │  ") + chalk.yellow(hubLine) + chalk.gray("│"));
+      }
     }
+
+    // Zones
     r.zones.forEach((z) => {
       const isControl = r.name === primaryRegion && z === primaryZone;
       const zoneLine = `    zone-${z}${isControl ? " (control plane)" : ""}`.padEnd(53);

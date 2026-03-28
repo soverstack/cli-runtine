@@ -1,5 +1,5 @@
 /**
- * Generate workloads/zonal/{region}/{dc}/loadbalancer.yaml - HAProxy
+ * Generate workloads/zonal/{region}/{dc}/loadbalancer.yaml
  */
 
 import fs from "fs";
@@ -51,13 +51,13 @@ services:
     implementation: haproxy       # haproxy | nginx | traefik
     version: "3.0"              # 3.0, 2.9, 2.8
     instances:
-      - name: haproxy-${region.name}-${datacenter.name}-01
+      - name: lb-${region.name}-${datacenter.name}-01
         vm_id: ${vmIdBase}
         flavor: small
         image: debian-12
         host: ${nodePrefix}-01
 ${!isLocal ? `
-      - name: haproxy-${region.name}-${datacenter.name}-02
+      - name: lb-${region.name}-${datacenter.name}-02
         vm_id: ${vmIdBase + 1}
         flavor: small
         image: debian-12

@@ -64,11 +64,11 @@ export function generateNodesYaml({ ctx, region, datacenter }: NodesYamlOptions)
       : `pve-${region.name}-${datacenter.name}-${num}`;
     const ip = `10.${regionOctet}.${baseOctet}.${10 + i}`;
     const role = i === 0 ? "primary" : "secondary";
+    // Hub: storage-focused (HDD, no Ceph)
+    // Zone: compute-focused (NVMe, Ceph cluster)
     const capabilities = isHub
-      ? ["storage", "hdd"]
-      : isPrimaryZone
-      ? ["compute", "nvme", "ceph"]
-      : ["compute", "nvme"];
+      ? ["hdd", "backup"]
+      : ["compute", "nvme", "ceph"];
 
     // ENV prefix for bootstrap password: PVE_EU_PARIS_01 -> PVE_EU_PARIS_01_BOOTSTRAP_PASSWORD
     const envPrefix = name.toUpperCase().replace(/-/g, "_");
@@ -76,31 +76,34 @@ export function generateNodesYaml({ ctx, region, datacenter }: NodesYamlOptions)
     return { name, ip, role, capabilities, envPrefix };
   });
 
-  const content = `# ==============================================================================
-# NODES: ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
-# ==============================================================================
-#
-# Bare metal servers in this datacenter.
-# Type: ${datacenter.type.toUpperCase()}${isPrimaryZone ? " (Control Plane)" : ""}
-#
-# Bootstrap credentials are provided by your hosting provider (Hetzner/OVH).
-# After bootstrap, Soverstack deploys its own SSH keys and disables password auth.
-#
-# ==============================================================================
+  // Capabilities documentation based on type
+  const capabilitiesDoc = isHub
+    ? `# Capabilities (Hub):
+#   - hdd: HDD storage for backups (cold storage)
+#   - backup: Runs backup services (PBS, restic)
+#   - gpu: (optional) GPU for transcoding`
+    : `# Capabilities (Zone):
+#   - compute: Runs production VMs
+#   - nvme: NVMe storage (fast)
+#   - ceph: Part of distributed Ceph cluster
+#   - gpu: (optional) GPU for AI/ML workloads`;
 
-datacenter_type: ${datacenter.type}
+  const content = `# ==============================================================================
+# NODES
+# ==============================================================================
+#
+# Bare metal servers (Proxmox hosts).
+#
+# Bootstrap credentials are provided by your bare-metal provider.
+# After bootstrap, Soverstack deploys SSH keys and disables password auth.
+#
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # NODES
 # ------------------------------------------------------------------------------
 #
-# Capabilities:
-#   - compute: Can run VMs
-#   - storage: Has storage (PBS, MinIO)
-#   - nvme: Has NVMe storage
-#   - hdd: Has HDD storage (backup)
-#   - ceph: Part of Ceph cluster
-#   - gpu: Has GPU for AI/ML workloads
+${capabilitiesDoc}
 
 nodes:
 ${nodes
@@ -120,16 +123,17 @@ ${nodes
   )
   .join("\n\n")}
 ${
-  isPrimaryZone
+  !isHub
     ? `
 # ------------------------------------------------------------------------------
 # CEPH STORAGE
 # ------------------------------------------------------------------------------
+# All zone nodes are part of the Ceph cluster.
+# Validation enforces: min 3 nodes, odd number (quorum).
 
 ceph:
   enabled: true
   pool_name: ${datacenter.name}-pool
-  replicas: ${Math.min(3, actualNodeCount)}
 `
     : ""
 }`;

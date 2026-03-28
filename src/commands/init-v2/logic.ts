@@ -35,6 +35,7 @@ import {
   generateDnsYaml,
   generateSecretsYaml,
   generateIdentityYaml,
+  generateMeshYaml,
   // Workloads - Regional
   generateMonitoringYaml,
   generateBastionYaml,
@@ -187,6 +188,7 @@ export class ProjectInitializer {
       generateDnsYaml(this.ctx);
       generateSecretsYaml(this.ctx);
       generateIdentityYaml(this.ctx);
+      generateMeshYaml(this.ctx);
 
       const includeHub = !this.options.skipHubs;
 

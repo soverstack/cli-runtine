@@ -1,5 +1,5 @@
 /**
- * Generate workloads/global/dns.yaml - Authoritative DNS + Load Balancer
+ * Generate workloads/global/dns.yaml
  */
 
 import fs from "fs";
@@ -33,23 +33,23 @@ services:
     implementation: powerdns      # powerdns | bind | knot
     version: "4.9"              # 4.9, 4.8, 4.7
     instances:
-      - name: pdns-01
+      - name: dns-01
         vm_id: 50
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-01
 ${!isLocal ? `
-      - name: pdns-02
+      - name: dns-02
         vm_id: 51
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-02` : ""}
-    zones:
-      - name: ${options.domain}
-        type: master
-      - name: internal.${options.domain}
-        type: master
     overwrite_config:
+      # zones:
+      #   - name: ${options.domain}
+      #     type: master
+      #   - name: internal.${options.domain}
+      #     type: master
       # api_enabled: true
       # webserver_port: 8081
       # default_ttl: 3600
@@ -62,13 +62,13 @@ ${!isLocal ? `
     implementation: dnsdist       # dnsdist | haproxy
     version: "1.9"              # 1.9, 1.8, 1.7
     instances:
-      - name: dnsdist-01
+      - name: dns-lb-01
         vm_id: 60
         flavor: micro
         image: debian-12
         host: ${primaryNodePrefix}-01
 
-      - name: dnsdist-02
+      - name: dns-lb-02
         vm_id: 61
         flavor: micro
         image: debian-12

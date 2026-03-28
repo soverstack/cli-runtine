@@ -85,10 +85,10 @@ export function generateSshYaml({ ctx, region, datacenter }: SshYamlOptions): vo
   const rotation = getRotationDays(options.infrastructureTier);
 
   const content = `# ==============================================================================
-# SSH CONFIGURATION: ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
+# SSH CONFIGURATION
 # ==============================================================================
 #
-# SSH access configuration for this datacenter.
+# SSH access configuration.
 # Keys are stored in .ssh/ (paths relative to platform.yaml)
 #
 # SECURITY:
@@ -98,9 +98,6 @@ export function generateSshYaml({ ctx, region, datacenter }: SshYamlOptions): vo
 # - NEVER store raw private keys in this repository
 #
 # ==============================================================================
-
-datacenter: ${datacenter.fullName}
-region: ${region.name}
 
 # ------------------------------------------------------------------------------
 # KEY ROTATION POLICY

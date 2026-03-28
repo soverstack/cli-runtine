@@ -1,5 +1,5 @@
 /**
- * Generate workloads/regional/{region}/monitoring.yaml - Metrics, Logs, Alerting, Dashboards
+ * Generate workloads/regional/{region}/monitoring.yaml
  */
 
 import fs from "fs";
@@ -36,54 +36,77 @@ services:
   # ============================================================================
   # METRICS
   # ============================================================================
+  # ${!isLocal ? "HA: 2 instances scraping same targets (both have full data)" : "Single instance for local tier"}
   - role: metrics
     scope: regional
     region: ${region.name}
-    implementation: prometheus    # prometheus | victoriametrics | mimir
-    version: "2.53"             # 2.53, 2.52, 2.51
+    implementation: victoriametrics  # victoriametrics | prometheus | mimir
+    version: "1.102"            # 1.102, 1.101, 1.100
     instances:
-      - name: prometheus-${region.name}-01
+      - name: metrics-${region.name}-01
         vm_id: 300
-        flavor: large
+        flavor: standard
+        disk: 500G
         image: debian-12
         host: ${nodePrefix}-01
+${!isLocal ? `
+      - name: metrics-${region.name}-02
+        vm_id: 301
+        flavor: standard
+        disk: 500G
+        image: debian-12
+        host: ${nodePrefix}-02` : ""}
     overwrite_config:
       # retention: 30d
       # scrape_interval: 15s
-      # storage_size: 100Gi
 ${!isLocal ? `
   # ============================================================================
   # LOGS
   # ============================================================================
+  # HA: 2 instances with shared storage (MinIO)
   - role: logs
     scope: regional
     region: ${region.name}
     implementation: loki          # loki | elasticsearch | graylog
     version: "3.1"              # 3.1, 3.0, 2.9
     instances:
-      - name: loki-${region.name}-01
+      - name: logs-${region.name}-01
         vm_id: 320
-        flavor: large
+        flavor: standard
+        disk: 500G
         image: debian-12
         host: ${nodePrefix}-02
+
+      - name: logs-${region.name}-02
+        vm_id: 321
+        flavor: standard
+        disk: 500G
+        image: debian-12
+        host: ${nodePrefix}-03
     overwrite_config:
       # retention: 30d
-      # storage_size: 100Gi
 
   # ============================================================================
   # ALERTING
   # ============================================================================
+  # HA: Cluster mode with gossip protocol (critical - must not go down)
   - role: alerting
     scope: regional
     region: ${region.name}
     implementation: alertmanager  # alertmanager | grafana-alerting
     version: "0.27"             # 0.27, 0.26, 0.25
     instances:
-      - name: alertmanager-${region.name}-01
+      - name: alerting-${region.name}-01
         vm_id: 330
         flavor: small
         image: debian-12
         host: ${nodePrefix}-01
+
+      - name: alerting-${region.name}-02
+        vm_id: 331
+        flavor: small
+        image: debian-12
+        host: ${nodePrefix}-02
     overwrite_config:
       # resolve_timeout: 5m
       # smtp_smarthost: smtp.example.com:587
@@ -91,15 +114,16 @@ ${!isLocal ? `
   # ============================================================================
   # DASHBOARDS
   # ============================================================================
+  # Single instance OK (viewing only, not critical)
   - role: dashboards
     scope: regional
     region: ${region.name}
     implementation: grafana       # grafana | kibana
     version: "11.1"             # 11.1, 11.0, 10.4
     instances:
-      - name: grafana-01
+      - name: dashboards-01
         vm_id: 310
-        flavor: standard
+        flavor: small
         image: debian-12
         host: ${nodePrefix}-01
     overwrite_config:

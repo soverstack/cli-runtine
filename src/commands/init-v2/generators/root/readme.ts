@@ -39,7 +39,7 @@ soverstack apply
 
 \`\`\`
 ${options.projectName}/
-├── soverstack.yaml          # Global config (flavors, defaults)
+├── platform.yaml          # Global config (flavors, defaults)
 ├── .env                     # Credentials (NEVER COMMIT)
 │
 ├── inventory/               # Physical infrastructure

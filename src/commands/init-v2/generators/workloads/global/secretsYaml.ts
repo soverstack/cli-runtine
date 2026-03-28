@@ -1,5 +1,5 @@
 /**
- * Generate workloads/global/secrets.yaml - Vault
+ * Generate workloads/global/secrets.yaml
  */
 
 import fs from "fs";
@@ -16,11 +16,24 @@ export function generateSecretsYaml(ctx: GeneratorContext): void {
   const primaryNodePrefix = `pve-${options.primaryRegion}-${options.primaryZone}`;
   const isLocal = options.infrastructureTier === "local";
 
+  // Raft needs odd number of nodes (1, 3, 5) for quorum
+  const nodeCount = isLocal ? 1 : 3;
+
+  const instances = Array.from({ length: nodeCount }, (_, i) => {
+    const num = String(i + 1).padStart(2, "0");
+    return `      - name: secrets-${num}
+        vm_id: ${150 + i}
+        flavor: small
+        image: debian-12
+        host: ${primaryNodePrefix}-${num}`;
+  }).join("\n\n");
+
   const content = `# ==============================================================================
 # SECRETS - GLOBAL
 # ==============================================================================
 #
-# Secrets management and encryption for the platform.
+# Secrets management, encryption, and PKI for the platform.
+# Uses Raft integrated storage (no database dependency).
 #
 # ==============================================================================
 
@@ -30,21 +43,18 @@ services:
   # ============================================================================
   - role: secrets
     scope: global
-    implementation: vault         # vault | infisical
-    version: "1.17"             # 1.17, 1.16, 1.15
+    implementation: openbao        # openbao | vault | infisical
+    version: "2.1"               # 2.1, 2.0
     instances:
-      - name: vault-01
-        vm_id: 150
-        flavor: standard
-        image: debian-12
-        host: ${primaryNodePrefix}-01
-${!isLocal ? `
-      - name: vault-02
-        vm_id: 151
-        flavor: standard
-        image: debian-12
-        host: ${primaryNodePrefix}-02` : ""}
+${instances}
     overwrite_config:
+      # storage:
+        # backend: raft               # Integrated storage, no DB needed
+        # backend: postgresql       # Alternative: use database cluster
+      # backup:
+        # schedule: "0 */6 * * *"     # Every 6 hours
+        # retention: 30               # Keep 30 days
+        # destination: storage        # Backup to storage service (MinIO)
       # ui: true
       # log_level: info
       # max_lease_ttl: 768h

@@ -16,7 +16,7 @@ import { InfrastructureTierType, ComplianceLevel } from "@/types";
 export type DatacenterType = "hub" | "zone";
 
 /**
- * Datacenter configuration
+ * Datacenter configuration (for generators)
  */
 export interface DatacenterConfig {
   name: string;
@@ -25,12 +25,163 @@ export interface DatacenterConfig {
 }
 
 /**
- * Region configuration with datacenters
+ * Region configuration with datacenters (for generators)
  */
 export interface RegionConfig {
   name: string;
   zones: string[];
   hub?: string; // Hub name (optional, defaults to "hub-{region}")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UNIFIED INVENTORY (parsed from files)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Node in a datacenter (from nodes.yaml)
+ */
+export interface InventoryNode {
+  name: string;
+  address: string;
+  role: "primary" | "secondary";
+  capabilities: string[];
+  bootstrap?: {
+    user: string;
+    port: number;
+    password: {
+      type: "env" | "vault" | "file";
+      var_name?: string;
+      path?: string;
+    };
+  };
+}
+
+/**
+ * Ceph configuration (from nodes.yaml)
+ */
+export interface InventoryCeph {
+  enabled: boolean;
+  pool_name?: string;
+}
+
+/**
+ * VLAN configuration (from network.yaml)
+ */
+export interface InventoryVlan {
+  id: number;
+  name: string;
+  subnet: string;
+  gateway?: string;
+  mesh: boolean;
+  mtu: number;
+}
+
+/**
+ * Public IPs configuration (from network.yaml)
+ */
+export interface InventoryPublicIps {
+  type: "allocated_block" | "bgp";
+  allocated_block?: {
+    block: string;
+    gateway: string;
+    usable_range: string;
+  };
+  bgp?: {
+    asn: number;
+    upstream_asn: number;
+    ip_blocks: string[];
+  };
+}
+
+/**
+ * SSH user (from ssh.yaml)
+ */
+export interface InventorySshUser {
+  user: string;
+  groups: string[];
+  shell: string;
+  public_key: {
+    type: "file" | "env" | "vault";
+    path?: string;
+    var_name?: string;
+  };
+  private_key: {
+    type: "file" | "env" | "vault";
+    path?: string;
+    var_name?: string;
+  };
+}
+
+/**
+ * Knockd configuration (from ssh.yaml)
+ */
+export interface InventoryKnockd {
+  enabled: boolean;
+  sequence: number[];
+  seq_timeout: number;
+  port_timeout: number;
+}
+
+/**
+ * SSH rotation policy (from ssh.yaml)
+ */
+export interface InventoryRotationPolicy {
+  max_age_days: number;
+  warning_days: number;
+}
+
+/**
+ * Datacenter entry in region.yaml
+ */
+export interface InventoryDatacenterRef {
+  name: string;
+  type: DatacenterType;
+  description: string;
+  control_plane?: boolean;
+  path: string;
+}
+
+/**
+ * Unified Datacenter (merged from region.yaml + nodes.yaml + network.yaml + ssh.yaml)
+ */
+export interface InventoryDatacenter {
+  // From region.yaml (datacenter entry)
+  name: string;
+  type: DatacenterType;
+  description: string;
+  control_plane?: boolean;
+
+  // From nodes.yaml
+  nodes: InventoryNode[];
+  ceph?: InventoryCeph;
+
+  // From network.yaml
+  vlans: InventoryVlan[];
+  public_ips?: InventoryPublicIps;
+
+  // From ssh.yaml
+  rotation_policy: InventoryRotationPolicy;
+  knockd: InventoryKnockd;
+  users: InventorySshUser[];
+}
+
+/**
+ * Unified Region (from region.yaml + merged datacenters)
+ */
+export interface InventoryRegion {
+  name: string;
+  description: string;
+  dns_zone: string;
+  hub?: string;
+  compliance: string[];
+  datacenters: InventoryDatacenter[];
+}
+
+/**
+ * Unified Inventory (all regions with merged data)
+ */
+export interface Inventory {
+  regions: InventoryRegion[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════

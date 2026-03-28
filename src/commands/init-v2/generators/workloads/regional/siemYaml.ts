@@ -1,5 +1,5 @@
 /**
- * Generate workloads/regional/{region}/siem.yaml - Wazuh
+ * Generate workloads/regional/{region}/siem.yaml
  */
 
 import fs from "fs";
@@ -45,9 +45,10 @@ services:
     implementation: wazuh         # wazuh | elastic-siem | splunk
     version: "4.8"              # 4.8, 4.7
     instances:
-      - name: wazuh-${region.name}-01
+      - name: siem-${region.name}-01
         vm_id: 130
         flavor: large
+        disk: 500G
         image: debian-12
         host: ${nodePrefix}-02
     overwrite_config:

@@ -1,5 +1,5 @@
 /**
- * Generate workloads/zonal/{region}/{hub}/backup.yaml - Proxmox Backup Server
+ * Generate workloads/zonal/{region}/{hub}/backup.yaml
  */
 
 import fs from "fs";
@@ -46,16 +46,17 @@ services:
     implementation: pbs           # pbs | restic | borg
     version: "3.2"              # 3.2, 3.1, 3.0
     instances:
-      - name: pbs-${region.name}-01
+      - name: backup-${region.name}-01
         vm_id: 410
-        flavor: large
+        flavor: small
+        disk: 500G
         image: pbs-3.2
         host: ${nodePrefix}-01
-    retention:
-      keep_daily: 7
-      keep_weekly: 4
-      keep_monthly: 6
     overwrite_config:
+      # retention:
+      #   keep_daily: 7
+      #   keep_weekly: 4
+      #   keep_monthly: 6
       # datastore_path: /mnt/backups
       # verify_new: true
       # notify_email: admin@example.com

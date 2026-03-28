@@ -1,5 +1,5 @@
 /**
- * Generate workloads/zonal/{region}/{dc}/firewall.yaml - VyOS
+ * Generate workloads/zonal/{region}/{dc}/firewall.yaml
  */
 
 import fs from "fs";
@@ -51,13 +51,13 @@ services:
     implementation: vyos          # vyos | opnsense | pfsense
     version: "1.4"              # 1.4, 1.3
     instances:
-      - name: vyos-${region.name}-${datacenter.name}-01
+      - name: fw-${region.name}-${datacenter.name}-01
         vm_id: ${vmIdBase}
         flavor: small
         image: vyos-1.4
         host: ${nodePrefix}-01
 ${!isLocal ? `
-      - name: vyos-${region.name}-${datacenter.name}-02
+      - name: fw-${region.name}-${datacenter.name}-02
         vm_id: ${vmIdBase + 1}
         flavor: small
         image: vyos-1.4

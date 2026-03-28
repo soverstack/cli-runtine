@@ -1,53 +1,59 @@
 /**
- * Generate workloads/global/identity.yaml
+ * Generate workloads/global/mesh.yaml
  */
 
 import fs from "fs";
 import path from "path";
 import { GeneratorContext } from "../../../types";
 
-export function generateIdentityYaml(ctx: GeneratorContext): void {
+export function generateMeshYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
   const globalDir = path.join(projectPath, "workloads", "global");
-  const filePath = path.join(globalDir, "identity.yaml");
+  const filePath = path.join(globalDir, "mesh.yaml");
 
   fs.mkdirSync(globalDir, { recursive: true });
 
   const primaryNodePrefix = `pve-${options.primaryRegion}-${options.primaryZone}`;
   const isLocal = options.infrastructureTier === "local";
 
+  // Skip mesh for local tier (single node doesn't need VPN mesh)
+  if (isLocal) {
+    return;
+  }
+
   const content = `# ==============================================================================
-# IDENTITY - GLOBAL
+# MESH - GLOBAL
 # ==============================================================================
 #
-# Identity management and SSO for the platform.
+# VPN mesh network connecting all regions and datacenters.
+# Provides secure inter-datacenter communication.
 #
 # ==============================================================================
 
 services:
   # ============================================================================
-  # IDENTITY
+  # MESH CONTROLLER
   # ============================================================================
-  - role: identity
+  - role: mesh
     scope: global
-    implementation: keycloak      # keycloak | authentik | zitadel
-    version: "25"               # 25, 24, 23
+    implementation: headscale      # headscale | netbird | nebula | zerotier
+    version: "0.23"              # 0.23, 0.22
     instances:
-      - name: identity-01
-        vm_id: 200
-        flavor: large
+      - name: mesh-01
+        vm_id: 170
+        flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-01
-${!isLocal ? `
-      - name: identity-02
-        vm_id: 201
-        flavor: large
+
+      - name: mesh-02
+        vm_id: 171
+        flavor: small
         image: debian-12
-        host: ${primaryNodePrefix}-02` : ""}
+        host: ${primaryNodePrefix}-02
     overwrite_config:
-      # http_relative_path: /auth
-      # proxy_mode: edge
-      # metrics_enabled: true
+      # server_url: https://vpn.${options.domain}
+      # dns_base_domain: mesh.internal
+      # oidc_issuer: https://identity.${options.domain}
 `;
 
   fs.writeFileSync(filePath, content.trim() + "\n");

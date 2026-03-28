@@ -40,3 +40,4 @@ ssh/id_rsa.pub
 
 # Generated files
 .soverstack/generated/
+my-soverstack-project/

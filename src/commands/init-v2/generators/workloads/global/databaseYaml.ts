@@ -1,5 +1,5 @@
 /**
- * Generate workloads/global/database.yaml - PostgreSQL
+ * Generate workloads/global/database.yaml
  */
 
 import fs from "fs";
@@ -28,6 +28,7 @@ export function generateDatabaseYaml(ctx: GeneratorContext): void {
     return `      - name: ${name}
         vm_id: ${250 + i}
         flavor: large
+        disk: 200G
         image: debian-12
         host: ${primaryNodePrefix}-${num}`;
   }).join("\n\n");
@@ -50,12 +51,16 @@ services:
     version: "16"               # 16, 15, 14
     instances:
 ${instances}
-    databases:
-      - name: keycloak
-        owner: keycloak
-      - name: grafana
-        owner: grafana
     overwrite_config:
+      # databases:
+      #   - name: identity
+      #     owner: identity       # keycloak, authentik, zitadel
+      #   - name: dashboards
+      #     owner: dashboards     # grafana, kibana
+      #   - name: mesh
+      #     owner: mesh           # headscale, netbird
+      #   - name: dns
+      #     owner: dns            # powerdns
       # max_connections: 200
       # shared_buffers: 512MB
       # work_mem: 16MB
