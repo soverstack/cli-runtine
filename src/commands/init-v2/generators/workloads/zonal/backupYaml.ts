@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
 
 interface BackupYamlOptions {
   ctx: GeneratorContext;
@@ -14,16 +14,13 @@ interface BackupYamlOptions {
 
 export function generateBackupYaml({ ctx, region, datacenter }: BackupYamlOptions): void {
   const { projectPath, options } = ctx;
-  const zonalDir = path.join(
-    projectPath,
-    "workloads",
-    "zonal",
-    region.name,
-    datacenter.fullName
-  );
+  const zonalDir = path.join(projectPath, "workloads", "zonal", region.name, datacenter.fullName);
   const filePath = path.join(zonalDir, "backup.yaml");
 
   fs.mkdirSync(zonalDir, { recursive: true });
+
+  const regionId = ctx.regionIds.get(region.name) || 1;
+  const dcId = ctx.dcIds.get(region.name)?.get(datacenter.fullName) || 1;
 
   const nodePrefix = `pve-hub-${region.name}`;
 
@@ -44,13 +41,13 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: pbs           # pbs | restic | borg
-    version: "3.2"              # 3.2, 3.1, 3.0
+${versionLine("pbs")}
     instances:
       - name: backup-${region.name}-01
-        vm_id: 410
+        vm_id: ${vmId("zonal", regionId, dcId, "backup", 0)}
         flavor: small
-        disk: 500G
-        image: pbs-3.2
+        disk: 500
+        image: debian-12
         host: ${nodePrefix}-01
     overwrite_config:
       # retention:

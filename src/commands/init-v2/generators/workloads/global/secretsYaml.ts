@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext } from "../../../types";
+import { GeneratorContext, versionLine, vmId } from "../../../types";
 
 export function generateSecretsYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -22,7 +22,7 @@ export function generateSecretsYaml(ctx: GeneratorContext): void {
   const instances = Array.from({ length: nodeCount }, (_, i) => {
     const num = String(i + 1).padStart(2, "0");
     return `      - name: secrets-${num}
-        vm_id: ${150 + i}
+        vm_id: ${vmId("global", 0, 0, "secrets", i)}
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-${num}`;
@@ -44,7 +44,7 @@ services:
   - role: secrets
     scope: global
     implementation: openbao        # openbao | vault | infisical
-    version: "2.1"               # 2.1, 2.0
+${versionLine("openbao")}
     instances:
 ${instances}
     overwrite_config:

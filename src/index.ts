@@ -15,6 +15,7 @@ import { graphCommand } from './commands/graph';
 import { generateSshKeysCommand } from './commands/generate-ssh';
 import { addCommand } from './commands/add';
 import { generateCommand } from './commands/generate';
+import { validateV2Command } from './commands/validate-v2';
 
 const program = new Command();
 
@@ -36,6 +37,7 @@ program.addCommand(graphCommand);
 program.addCommand(generateSshKeysCommand); // Deprecated, kept for backward compatibility
 program.addCommand(addCommand);
 program.addCommand(generateCommand);
+program.addCommand(validateV2Command);
 
 // Gestion des erreurs globales
 process.on('unhandledRejection', (error: Error) => {

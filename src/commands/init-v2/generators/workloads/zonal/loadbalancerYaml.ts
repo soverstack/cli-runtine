@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
 
 interface LoadbalancerYamlOptions {
   ctx: GeneratorContext;
@@ -25,12 +25,11 @@ export function generateLoadbalancerYaml({ ctx, region, datacenter }: Loadbalanc
 
   fs.mkdirSync(zonalDir, { recursive: true });
 
+  const regionId = ctx.regionIds.get(region.name) || 1;
+  const dcId = ctx.dcIds.get(region.name)?.get(datacenter.fullName) || 1;
+
   const nodePrefix = `pve-${region.name}-${datacenter.name}`;
   const isLocal = options.infrastructureTier === "local";
-
-  // Zone index for VM ID offset
-  const zoneIndex = region.zones.indexOf(datacenter.name);
-  const vmIdBase = 15 + zoneIndex * 10;
 
   const content = `# ==============================================================================
 # LOADBALANCER - ${datacenter.fullName.toUpperCase()} (${region.name.toUpperCase()})
@@ -49,16 +48,16 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: haproxy       # haproxy | nginx | traefik
-    version: "3.0"              # 3.0, 2.9, 2.8
+${versionLine("haproxy")}
     instances:
       - name: lb-${region.name}-${datacenter.name}-01
-        vm_id: ${vmIdBase}
+        vm_id: ${vmId("zonal", regionId, dcId, "loadbalancer", 0)}
         flavor: small
         image: debian-12
         host: ${nodePrefix}-01
 ${!isLocal ? `
       - name: lb-${region.name}-${datacenter.name}-02
-        vm_id: ${vmIdBase + 1}
+        vm_id: ${vmId("zonal", regionId, dcId, "loadbalancer", 1)}
         flavor: small
         image: debian-12
         host: ${nodePrefix}-02` : ""}

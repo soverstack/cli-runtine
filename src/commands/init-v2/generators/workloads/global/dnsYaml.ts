@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext } from "../../../types";
+import { GeneratorContext, versionLine, vmId } from "../../../types";
 
 export function generateDnsYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -31,16 +31,16 @@ services:
   - role: dns-authoritative
     scope: global
     implementation: powerdns      # powerdns | bind | knot
-    version: "4.9"              # 4.9, 4.8, 4.7
+${versionLine("powerdns")}
     instances:
       - name: dns-01
-        vm_id: 50
+        vm_id: ${vmId("global", 0, 0, "dns-authoritative", 0)}
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-01
 ${!isLocal ? `
       - name: dns-02
-        vm_id: 51
+        vm_id: ${vmId("global", 0, 0, "dns-authoritative", 1)}
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-02` : ""}
@@ -60,16 +60,16 @@ ${!isLocal ? `
   - role: dns-loadbalancer
     scope: global
     implementation: dnsdist       # dnsdist | haproxy
-    version: "1.9"              # 1.9, 1.8, 1.7
+${versionLine("dnsdist")}
     instances:
       - name: dns-lb-01
-        vm_id: 60
+        vm_id: ${vmId("global", 0, 0, "dns-loadbalancer", 0)}
         flavor: micro
         image: debian-12
         host: ${primaryNodePrefix}-01
 
       - name: dns-lb-02
-        vm_id: 61
+        vm_id: ${vmId("global", 0, 0, "dns-loadbalancer", 1)}
         flavor: micro
         image: debian-12
         host: ${primaryNodePrefix}-02

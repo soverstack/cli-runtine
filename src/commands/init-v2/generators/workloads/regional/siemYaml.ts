@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig } from "../../../types";
+import { GeneratorContext, RegionConfig, versionLine, vmId } from "../../../types";
 
 interface SiemYamlOptions {
   ctx: GeneratorContext;
@@ -13,6 +13,7 @@ interface SiemYamlOptions {
 
 export function generateSiemYaml({ ctx, region }: SiemYamlOptions): void {
   const { projectPath, options } = ctx;
+  const regionId = ctx.regionIds.get(region.name) || 1;
   const regionalDir = path.join(projectPath, "workloads", "regional", region.name);
   const filePath = path.join(regionalDir, "siem.yaml");
 
@@ -43,12 +44,12 @@ services:
     scope: regional
     region: ${region.name}
     implementation: wazuh         # wazuh | elastic-siem | splunk
-    version: "4.8"              # 4.8, 4.7
+${versionLine("wazuh")}
     instances:
       - name: siem-${region.name}-01
-        vm_id: 130
+        vm_id: ${vmId("regional", regionId, 0, "siem", 0)}
         flavor: large
-        disk: 500G
+        disk: 500
         image: debian-12
         host: ${nodePrefix}-02
     overwrite_config:

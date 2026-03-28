@@ -209,17 +209,29 @@ export const addZoneCommand = new Command("zone")
       };
 
       // Create generator context
+      const allRegions = project.regions.map((r) => ({
+        name: r.name,
+        zones: r.name === selectedRegion
+          ? [...r.zones.map((z) => z.name), zoneName!]
+          : r.zones.map((z) => z.name),
+      }));
+      const regionIds = new Map<string, number>();
+      const dcIds = new Map<string, Map<string, number>>();
+      allRegions.forEach((r, i) => {
+        regionIds.set(r.name, i + 1);
+        const rDcIds = new Map<string, number>();
+        let dcIdx = 1;
+        rDcIds.set(`hub-${r.name}`, dcIdx++);
+        r.zones.forEach((z: string) => rDcIds.set(`zone-${z}`, dcIdx++));
+        dcIds.set(r.name, rDcIds);
+      });
+
       const ctx: GeneratorContext = {
         projectPath,
         options: {
           projectName: path.basename(projectPath),
           domain,
-          regions: project.regions.map((r) => ({
-            name: r.name,
-            zones: r.name === selectedRegion
-              ? [...r.zones.map((z) => z.name), zoneName!]
-              : r.zones.map((z) => z.name),
-          })),
+          regions: allRegions,
           primaryRegion: project.regions[0]?.name || selectedRegion!,
           primaryZone: project.regions[0]?.zones[0]?.name || zoneName!,
           generateSshKeys: generateSsh,
@@ -227,6 +239,8 @@ export const addZoneCommand = new Command("zone")
           complianceLevel: "startup",
           skipHubs: isLocal,
         },
+        regionIds,
+        dcIds,
       };
 
       // Generate inventory files

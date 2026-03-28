@@ -237,15 +237,27 @@ export const addRegionCommand = new Command("region")
       };
 
       // Create generator context
+      const allRegions = [
+        ...project.regions.map((r) => ({ name: r.name, zones: r.zones.map((z: any) => z.name) })),
+        regionConfig,
+      ];
+      const regionIds = new Map<string, number>();
+      const dcIds = new Map<string, Map<string, number>>();
+      allRegions.forEach((r, i) => {
+        regionIds.set(r.name, i + 1);
+        const rDcIds = new Map<string, number>();
+        let dcIdx = 1;
+        rDcIds.set(`hub-${r.name}`, dcIdx++);
+        r.zones.forEach((z: string) => rDcIds.set(`zone-${z}`, dcIdx++));
+        dcIds.set(r.name, rDcIds);
+      });
+
       const ctx: GeneratorContext = {
         projectPath,
         options: {
           projectName: platform.project_name || path.basename(projectPath),
           domain: platform.domain || "example.com",
-          regions: [
-            ...project.regions.map((r) => ({ name: r.name, zones: r.zones.map((z) => z.name) })),
-            regionConfig,
-          ],
+          regions: allRegions,
           primaryRegion: project.regions[0]?.name || regionName!,
           primaryZone: project.regions[0]?.zones[0]?.name || zones[0],
           generateSshKeys: generateSsh,
@@ -253,6 +265,8 @@ export const addRegionCommand = new Command("region")
           complianceLevel: "startup",
           skipHubs: isLocal,
         },
+        regionIds,
+        dcIds,
       };
 
       // Generate inventory files

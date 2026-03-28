@@ -16,6 +16,7 @@ import {
   RegionConfig,
   getDatacenters,
   getHubName,
+  regionOwnsHub,
 } from "./types";
 
 import {
@@ -57,9 +58,34 @@ export class ProjectInitializer {
   constructor(options: InitOptions) {
     this.options = options;
     this.projectPath = path.resolve(process.cwd(), options.projectName);
+
+    // Build index maps for VM ID computation
+    const regionIds = new Map<string, number>();
+    const dcIds = new Map<string, Map<string, number>>();
+    const includeHub = !options.skipHubs;
+
+    options.regions.forEach((region, i) => {
+      regionIds.set(region.name, i + 1); // 1-based
+
+      const regionDcIds = new Map<string, number>();
+      let dcIndex = 1; // 0 = regional, 1+ = datacenters
+
+      // Hubs first, then zones
+      if (includeHub && regionOwnsHub(region)) {
+        regionDcIds.set(getHubName(region), dcIndex++);
+      }
+      region.zones.forEach((zone) => {
+        regionDcIds.set(`zone-${zone}`, dcIndex++);
+      });
+
+      dcIds.set(region.name, regionDcIds);
+    });
+
     this.ctx = {
       projectPath: this.projectPath,
       options,
+      regionIds,
+      dcIds,
     };
   }
 
@@ -111,9 +137,9 @@ export class ProjectInitializer {
     const spinner = ora("Creating .soverstack directory").start();
     try {
       const soverstackPath = path.join(this.projectPath, ".soverstack");
-      const includeHub = !this.options.skipHubs;
 
       this.options.regions.forEach((region: RegionConfig) => {
+        const includeHub = !this.options.skipHubs && regionOwnsHub(region);
         const datacenters = getDatacenters(region, includeHub);
 
         datacenters.forEach((dc) => {
@@ -153,14 +179,13 @@ export class ProjectInitializer {
   private async generateInventory(): Promise<void> {
     const spinner = ora("Generating inventory files").start();
     try {
-      const includeHub = !this.options.skipHubs;
-
       // Collect all datacenters for SSH key generation
       const allDatacenters: { region: RegionConfig; dc: DatacenterConfig }[] = [];
 
       this.options.regions.forEach((region: RegionConfig) => {
         generateRegionYaml({ ctx: this.ctx, region });
 
+        const includeHub = !this.options.skipHubs && regionOwnsHub(region);
         const datacenters = getDatacenters(region, includeHub);
         datacenters.forEach((dc) => {
           allDatacenters.push({ region, dc });
@@ -190,8 +215,6 @@ export class ProjectInitializer {
       generateIdentityYaml(this.ctx);
       generateMeshYaml(this.ctx);
 
-      const includeHub = !this.options.skipHubs;
-
       // Regional and Zonal workloads (per region)
       this.options.regions.forEach((region: RegionConfig) => {
         // Regional workloads
@@ -200,6 +223,7 @@ export class ProjectInitializer {
         generateSiemYaml({ ctx: this.ctx, region });
 
         // Zonal workloads
+        const includeHub = !this.options.skipHubs && regionOwnsHub(region);
         const datacenters = getDatacenters(region, includeHub);
         datacenters.forEach((dc) => {
           if (dc.type === "hub") {

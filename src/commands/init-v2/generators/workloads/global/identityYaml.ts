@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext } from "../../../types";
+import { GeneratorContext, versionLine, vmId } from "../../../types";
 
 export function generateIdentityYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -31,16 +31,16 @@ services:
   - role: identity
     scope: global
     implementation: keycloak      # keycloak | authentik | zitadel
-    version: "25"               # 25, 24, 23
+${versionLine("keycloak")}
     instances:
       - name: identity-01
-        vm_id: 200
+        vm_id: ${vmId("global", 0, 0, "identity", 0)}
         flavor: large
         image: debian-12
         host: ${primaryNodePrefix}-01
 ${!isLocal ? `
       - name: identity-02
-        vm_id: 201
+        vm_id: ${vmId("global", 0, 0, "identity", 1)}
         flavor: large
         image: debian-12
         host: ${primaryNodePrefix}-02` : ""}

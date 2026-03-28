@@ -292,8 +292,6 @@ export function loadInventory(projectPath: string): Inventory {
       datacenters.push({
         name: scannedDc.fullName,
         type: scannedDc.type,
-        description: scannedDc.description,
-        control_plane: scannedDc.control_plane,
         nodes,
         ceph,
         vlans,

@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext } from "../../../types";
+import { GeneratorContext, versionLine, vmId } from "../../../types";
 
 export function generateDatabaseYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -19,16 +19,16 @@ export function generateDatabaseYaml(ctx: GeneratorContext): void {
     options.infrastructureTier === "local"
       ? 1
       : options.infrastructureTier === "production"
-      ? 2
-      : 3;
+        ? 3
+        : 3;
 
   const instances = Array.from({ length: nodeCount }, (_, i) => {
     const num = String(i + 1).padStart(2, "0");
     const name = i === 0 ? "db-primary" : `db-replica-${num}`;
     return `      - name: ${name}
-        vm_id: ${250 + i}
+        vm_id: ${vmId("global", 0, 0, "database", i)}
         flavor: large
-        disk: 200G
+        disk: 200
         image: debian-12
         host: ${primaryNodePrefix}-${num}`;
   }).join("\n\n");
@@ -48,7 +48,7 @@ services:
   - role: database
     scope: global
     implementation: postgresql    # postgresql | mysql | mariadb
-    version: "16"               # 16, 15, 14
+${versionLine("postgresql")}
     instances:
 ${instances}
     overwrite_config:

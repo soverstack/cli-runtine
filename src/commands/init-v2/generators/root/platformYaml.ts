@@ -66,15 +66,14 @@ ${DEFAULT_IMAGES.map(
 
 defaults:
   global_placement:
-    region: ${options.primaryRegion}
     datacenter: zone-${options.primaryZone}
 
 # ------------------------------------------------------------------------------
 # FLAVORS (VM Sizes)
 # ------------------------------------------------------------------------------
 # Compute profiles with default disk. Services can override disk size.
-# Usage: flavor: standard          (uses default 32G)
-#        flavor: small, disk: 500G (override disk)
+# Usage: flavor: standard          (uses default 32)
+#        flavor: small, disk: 500  (override disk in GB)
 
 flavors:
 ${DEFAULT_FLAVORS.map(

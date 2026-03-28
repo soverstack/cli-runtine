@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
 
 interface StorageYamlOptions {
   ctx: GeneratorContext;
@@ -24,6 +24,9 @@ export function generateStorageYaml({ ctx, region, datacenter }: StorageYamlOpti
   const filePath = path.join(zonalDir, "storage.yaml");
 
   fs.mkdirSync(zonalDir, { recursive: true });
+
+  const regionId = ctx.regionIds.get(region.name) || 1;
+  const dcId = ctx.dcIds.get(region.name)?.get(datacenter.fullName) || 1;
 
   const nodePrefix = `pve-hub-${region.name}`;
   const isLocal = options.infrastructureTier === "local";
@@ -45,19 +48,19 @@ services:
     region: ${region.name}
     datacenter: ${datacenter.fullName}
     implementation: minio         # minio | ceph-rgw | seaweedfs
-    version: "2024.07"          # 2024.07, 2024.06, 2024.01
+${versionLine("minio")}
     instances:
       - name: storage-${region.name}-01
-        vm_id: 400
+        vm_id: ${vmId("zonal", regionId, dcId, "storage", 0)}
         flavor: standard
-        disk: 1000G
+        disk: 1000
         image: debian-12
         host: ${nodePrefix}-01
 ${!isLocal ? `
       - name: storage-${region.name}-02
-        vm_id: 401
+        vm_id: ${vmId("zonal", regionId, dcId, "storage", 1)}
         flavor: standard
-        disk: 1000G
+        disk: 1000
         image: debian-12
         host: ${nodePrefix}-02` : ""}
     overwrite_config:

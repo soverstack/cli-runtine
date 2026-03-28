@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, getHubName } from "../../types";
+import { GeneratorContext, RegionConfig } from "../../types";
 
 interface RegionYamlOptions {
   ctx: GeneratorContext;
@@ -22,18 +22,12 @@ export function generateRegionYaml({ ctx, region }: RegionYamlOptions): void {
   const isPrimary = region.name === options.primaryRegion;
   const isLocal = options.infrastructureTier === "local";
 
-  // Hub logic:
-  // - No hub for local tier
-  // - Own hub: hub-{regionName} (hub field matches region name)
-  // - Shared hub: references another region's hub
-  const hasOwnHub = !isLocal && region.hub === `hub-${region.name}`;
-  const hasSharedHub = !isLocal && region.hub && region.hub !== `hub-${region.name}`;
+  // Hub line
+  const hubLine = !isLocal && region.hub ? `hub: ${region.hub}` : "";
 
   // Shared hub comment
-  let sharedHubComment = "";
-  if (hasSharedHub) {
-    sharedHubComment = `# Hub: uses ${region.hub} (shared from another region)\n`;
-  }
+  const hasSharedHub = !isLocal && region.hub && region.hub !== `hub-${region.name}`;
+  const sharedHubComment = hasSharedHub ? `# Uses ${region.hub} (shared from another region)\n` : "";
 
   const content = `# ════════════════════════════════════════════════════════════════════════════
 # REGION: ${region.name.toUpperCase()}
@@ -41,12 +35,15 @@ export function generateRegionYaml({ ctx, region }: RegionYamlOptions): void {
 #
 # Region metadata and configuration.
 #${isPrimary ? "\n# This is the PRIMARY region (hosts global services).\n#" : ""}
+# Datacenters are discovered from inventory/${region.name}/datacenters/
+# Type is derived from prefix: hub-* = hub, zone-* = zone
+#
 # ════════════════════════════════════════════════════════════════════════════
 
 name: ${region.name}
 description: "${region.name.toUpperCase()} Region"
 dns_zone: ${region.name}.${options.domain}
-${!isLocal && region.hub ? `hub: ${region.hub}` : ""}
+${hubLine}
 
 # ────────────────────────────────────────────────────────────────────────────
 # COMPLIANCE (optional, for documentation)
@@ -59,34 +56,7 @@ ${!isLocal && region.hub ? `hub: ${region.hub}` : ""}
 compliance: []
 # compliance: [gdpr]
 # compliance: [gdpr, pci-dss]
-
-# ────────────────────────────────────────────────────────────────────────────
-# DATACENTERS
-# ────────────────────────────────────────────────────────────────────────────
-# List of datacenters in this region.
-# Each datacenter folder must contain: nodes.yaml, network.yaml, ssh.yaml
-#${!isLocal ? "\n# - hub: Backup & storage (HDD, MinIO, PBS)" : ""}
-# - zone: Production compute (NVMe, Ceph)
-
-${sharedHubComment}datacenters:
-${hasOwnHub ? `  - name: hub-${region.name}
-    type: hub
-    description: "${region.name.toUpperCase()} Hub - Backup & Storage"
-    path: ./datacenters/hub-${region.name}
-
-` : ""}${region.zones
-  .map((zone) => {
-    const isControlPlane = isPrimary && zone === options.primaryZone;
-    const zoneDesc = isControlPlane
-      ? `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone - Control Plane`
-      : `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone - Production`;
-    return `  - name: zone-${zone}
-    type: zone
-    description: "${zoneDesc}"${isControlPlane ? "\n    control_plane: true" : ""}
-    path: ./datacenters/zone-${zone}`;
-  })
-  .join("\n\n")}
-`;
+${sharedHubComment}`;
 
   fs.writeFileSync(filePath, content.trim() + "\n");
 }

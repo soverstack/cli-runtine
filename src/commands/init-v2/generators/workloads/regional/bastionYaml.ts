@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig } from "../../../types";
+import { GeneratorContext, RegionConfig, versionLine, vmId } from "../../../types";
 
 interface BastionYamlOptions {
   ctx: GeneratorContext;
@@ -13,6 +13,7 @@ interface BastionYamlOptions {
 
 export function generateBastionYaml({ ctx, region }: BastionYamlOptions): void {
   const { projectPath, options } = ctx;
+  const regionId = ctx.regionIds.get(region.name) || 1;
   const regionalDir = path.join(projectPath, "workloads", "regional", region.name);
   const filePath = path.join(regionalDir, "bastion.yaml");
 
@@ -38,19 +39,23 @@ services:
     scope: regional
     region: ${region.name}
     implementation: teleport      # teleport | boundary | guacamole
-    version: "16"               # 16, 15, 14
+${versionLine("teleport")}
     instances:
       - name: bastion-${region.name}-01
-        vm_id: 120
+        vm_id: ${vmId("regional", regionId, 0, "bastion", 0)}
         flavor: small
         image: debian-12
         host: ${nodePrefix}-01
-${!isLocal ? `
+${
+  !isLocal
+    ? `
       - name: bastion-${region.name}-02
-        vm_id: 121
+        vm_id: ${vmId("regional", regionId, 0, "bastion", 1)}
         flavor: small
         image: debian-12
-        host: ${nodePrefix}-02` : ""}
+        host: ${nodePrefix}-02`
+    : ""
+}
     overwrite_config:
       # cluster_name: ${region.name}-teleport
       # session_recording: node

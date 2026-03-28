@@ -131,25 +131,12 @@ export interface InventoryRotationPolicy {
 }
 
 /**
- * Datacenter entry in region.yaml
- */
-export interface InventoryDatacenterRef {
-  name: string;
-  type: DatacenterType;
-  description: string;
-  control_plane?: boolean;
-  path: string;
-}
-
-/**
- * Unified Datacenter (merged from region.yaml + nodes.yaml + network.yaml + ssh.yaml)
+ * Unified Datacenter (discovered from filesystem + merged from nodes.yaml + network.yaml + ssh.yaml)
+ * Type is derived from prefix: hub-* = hub, zone-* = zone
  */
 export interface InventoryDatacenter {
-  // From region.yaml (datacenter entry)
   name: string;
-  type: DatacenterType;
-  description: string;
-  control_plane?: boolean;
+  type: DatacenterType; // Derived from prefix
 
   // From nodes.yaml
   nodes: InventoryNode[];
@@ -209,6 +196,10 @@ export interface InitOptions {
 export interface GeneratorContext {
   projectPath: string;
   options: InitOptions;
+  /** 1-based region index map: regionName → regionId */
+  regionIds: Map<string, number>;
+  /** 1-based DC index map (per region): regionName → dcFullName → dcId */
+  dcIds: Map<string, Map<string, number>>;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -222,18 +213,18 @@ export interface Flavor {
   name: string;
   cpu: number;
   ram: number;
-  disk: string;
+  disk: number;
 }
 
 /**
  * Default flavors
  */
 export const DEFAULT_FLAVORS: Flavor[] = [
-  { name: "micro", cpu: 1, ram: 1024, disk: "10G" },
-  { name: "small", cpu: 2, ram: 2048, disk: "20G" },
-  { name: "standard", cpu: 2, ram: 4096, disk: "32G" },
-  { name: "large", cpu: 4, ram: 8192, disk: "64G" },
-  { name: "performance", cpu: 8, ram: 16384, disk: "100G" },
+  { name: "micro", cpu: 1, ram: 1024, disk: 10 },
+  { name: "small", cpu: 2, ram: 2048, disk: 20 },
+  { name: "standard", cpu: 2, ram: 4096, disk: 32 },
+  { name: "large", cpu: 4, ram: 8192, disk: 64 },
+  { name: "performance", cpu: 8, ram: 16384, disk: 100 },
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -327,11 +318,7 @@ export type RegionalServiceRole =
 /**
  * Zonal service roles
  */
-export type ZonalServiceRole =
-  | "firewall"
-  | "loadbalancer"
-  | "storage"
-  | "backup";
+export type ZonalServiceRole = "firewall" | "loadbalancer" | "storage" | "backup";
 
 /**
  * All service roles
@@ -348,7 +335,7 @@ export type ServiceRole = GlobalServiceRole | RegionalServiceRole | ZonalService
 export type ImplementationMap = {
   // Global
   database: "postgresql" | "mysql" | "mariadb";
-  secrets: "vault" | "infisical";
+  secrets: "vault" | "infisical" | "openbao";
   identity: "keycloak" | "authentik" | "zitadel";
   "dns-authoritative": "powerdns" | "bind" | "knot";
   "dns-loadbalancer": "dnsdist" | "haproxy";
@@ -377,6 +364,7 @@ export interface ServiceInstance {
   name: string;
   vm_id: number;
   flavor: string;
+  disk?: number; // Override flavor disk (in GB)
   image: string;
   host: string;
 }
@@ -399,14 +387,18 @@ interface BaseService<R extends ServiceRole> {
 /**
  * Global service (no region/datacenter)
  */
-export interface GlobalService<R extends GlobalServiceRole = GlobalServiceRole> extends BaseService<R> {
+export interface GlobalService<
+  R extends GlobalServiceRole = GlobalServiceRole,
+> extends BaseService<R> {
   scope: "global";
 }
 
 /**
  * Regional service (has region)
  */
-export interface RegionalService<R extends RegionalServiceRole = RegionalServiceRole> extends BaseService<R> {
+export interface RegionalService<
+  R extends RegionalServiceRole = RegionalServiceRole,
+> extends BaseService<R> {
   scope: "regional";
   region: string;
 }
@@ -414,7 +406,9 @@ export interface RegionalService<R extends RegionalServiceRole = RegionalService
 /**
  * Zonal service (has region + datacenter)
  */
-export interface ZonalService<R extends ZonalServiceRole = ZonalServiceRole> extends BaseService<R> {
+export interface ZonalService<
+  R extends ZonalServiceRole = ZonalServiceRole,
+> extends BaseService<R> {
   scope: "zonal";
   region: string;
   datacenter: string;
@@ -470,7 +464,7 @@ export const VERSION_CATALOG: Record<string, VersionInfo> = {
   dnsdist: { current: "1.9", supported: ["1.9", "1.8", "1.7"] },
   // Metrics
   prometheus: { current: "2.53", supported: ["2.53", "2.52", "2.51"] },
-  victoriametrics: { current: "1.101", supported: ["1.101", "1.100", "1.99"] },
+  victoriametrics: { current: "1.101", supported: ["1.101", "1.102", "1.100", "1.99"] },
   mimir: { current: "2.13", supported: ["2.13", "2.12", "2.11"] },
   // Logs
   loki: { current: "3.1", supported: ["3.1", "3.0", "2.9"] },
@@ -515,6 +509,99 @@ export function getVersionInfo(implementation: string): VersionInfo {
   return VERSION_CATALOG[implementation] || { current: "latest", supported: ["latest"] };
 }
 
+/**
+ * Generate YAML version line with supported versions as comment
+ * Example: version: "16"               # Supported: 16, 15, 14
+ */
+export function versionLine(implementation: string, indent: number = 4): string {
+  const info = getVersionInfo(implementation);
+  const pad = " ".repeat(indent);
+  return `${pad}version: "${info.current}"${" ".repeat(Math.max(1, 16 - info.current.length))}# Supported: ${info.supported.join(", ")}`;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// VM ID SCHEME
+// ════════════════════════════════════════════════════════════════════════════
+//
+// vm_id = SCOPE_BASE + regionId × 100000 + dcId × 1000 + ROLE_OFFSET + instance
+//
+// Structure:  [Region][DC][Role+Instance]
+//
+//   GLOBAL:    1000 + roleOffset + instance            (fixed, one set)
+//   REGIONAL:  regionId × 100000 + roleOffset + inst   (dcId = 0)
+//   ZONAL:     regionId × 100000 + dcId × 1000 + roleOffset + inst
+//
+// regionId: 1-based (eu=1, us=2, asia=3...)
+// dcId:     0 = regional, 1+ = datacenters (hubs first, then zones)
+//
+// Reading a VM ID:
+//   102051 → region 1 (eu), dc 02 (zone-paris), offset 50 (loadbalancer), instance 1
+//   200050 → region 2 (asia), dc 00 (regional), offset 50 (logs), instance 0
+//   1201   → global, offset 200 (database), instance 1
+//
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Base for global scope (no region/dc encoding) */
+export const GLOBAL_BASE = 1000;
+
+/** Multiplier per region */
+export const REGION_BLOCK = 100000;
+
+/** Multiplier per datacenter within a region */
+export const DC_BLOCK = 1000;
+
+/**
+ * Role offsets within a location block (step of 50)
+ * Each role gets 50 VM IDs (instances 0-49)
+ */
+export const ROLE_OFFSETS = {
+  // Global roles (used with GLOBAL_BASE)
+  "dns-authoritative": 0,
+  "dns-loadbalancer": 50,
+  secrets: 100,
+  identity: 150,
+  database: 200,
+  mesh: 250,
+
+  // Regional roles (used with regionId × REGION_BLOCK, dcId = 0)
+  metrics: 0,
+  logs: 50,
+  alerting: 100,
+  dashboards: 150,
+  bastion: 200,
+  siem: 250,
+
+  // Zonal roles (used with regionId × REGION_BLOCK + dcId × DC_BLOCK)
+  firewall: 0,
+  loadbalancer: 50,
+  storage: 0, // hub: same offset as firewall (different DC)
+  backup: 50, // hub: same offset as loadbalancer (different DC)
+} as const;
+
+/**
+ * Compute a VM ID from the hierarchical scheme.
+ *
+ * @param scope - "global" | "regional" | "zonal"
+ * @param regionId - 1-based region index (ignored for global)
+ * @param dcId - 0 for regional, 1+ for zonal DCs (ignored for global)
+ * @param role - service role name
+ * @param instance - 0-based instance index
+ */
+export function vmId(
+  scope: "global" | "regional" | "zonal",
+  regionId: number,
+  dcId: number,
+  role: string,
+  instance: number
+): number {
+  const offset = ROLE_OFFSETS[role as keyof typeof ROLE_OFFSETS] ?? 0;
+
+  if (scope === "global") {
+    return GLOBAL_BASE + offset + instance;
+  }
+  return regionId * REGION_BLOCK + dcId * DC_BLOCK + offset + instance;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ════════════════════════════════════════════════════════════════════════════
@@ -549,11 +636,21 @@ export function getZoneFullName(zoneName: string): string {
 }
 
 /**
+ * Check if a region owns its hub (vs using a shared hub from another region)
+ */
+export function regionOwnsHub(region: RegionConfig): boolean {
+  return !region.hub || region.hub === `hub-${region.name}`;
+}
+
+/**
  * Get all datacenters for a region
  * @param region - Region configuration
  * @param includeHub - Whether to include hub (default: true, false for local tier)
  */
-export function getDatacenters(region: RegionConfig, includeHub: boolean = true): DatacenterConfig[] {
+export function getDatacenters(
+  region: RegionConfig,
+  includeHub: boolean = true,
+): DatacenterConfig[] {
   const datacenters: DatacenterConfig[] = [];
 
   // Add hub (unless skipHubs for local tier)

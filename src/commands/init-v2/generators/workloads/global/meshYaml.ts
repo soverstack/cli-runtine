@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext } from "../../../types";
+import { GeneratorContext, versionLine, vmId } from "../../../types";
 
 export function generateMeshYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -37,16 +37,16 @@ services:
   - role: mesh
     scope: global
     implementation: headscale      # headscale | netbird | nebula | zerotier
-    version: "0.23"              # 0.23, 0.22
+${versionLine("headscale")}
     instances:
       - name: mesh-01
-        vm_id: 170
+        vm_id: ${vmId("global", 0, 0, "mesh", 0)}
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-01
 
       - name: mesh-02
-        vm_id: 171
+        vm_id: ${vmId("global", 0, 0, "mesh", 1)}
         flavor: small
         image: debian-12
         host: ${primaryNodePrefix}-02
