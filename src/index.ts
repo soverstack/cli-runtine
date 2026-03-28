@@ -6,11 +6,6 @@ import chalk from 'chalk';
 // Import des commandes
 import { initCommand } from './commands/init-v2';
 import { validateCommand } from './commands/validate-v2';
-import { planCommand } from './commands/plan';
-import { applyCommand } from './commands/apply';
-import { destroyCommand } from './commands/destroy';
-import { dnsUpdateCommand } from './commands/dns-update';
-import { graphCommand } from './commands/graph';
 import { generateSshKeysCommand } from './commands/generate-ssh';
 import { addCommand } from './commands/add';
 import { generateCommand } from './commands/generate';
@@ -26,12 +21,7 @@ program
 // Ajouter toutes les commandes
 program.addCommand(initCommand);
 program.addCommand(validateCommand);
-program.addCommand(planCommand);
-program.addCommand(applyCommand);
-program.addCommand(destroyCommand);
-program.addCommand(dnsUpdateCommand);
-program.addCommand(graphCommand);
-program.addCommand(generateSshKeysCommand); // Deprecated, kept for backward compatibility
+program.addCommand(generateSshKeysCommand);
 program.addCommand(addCommand);
 program.addCommand(generateCommand);
 
