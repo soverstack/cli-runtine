@@ -16,8 +16,8 @@ import { ProjectInitializer } from "./logic";
 import { InitOptions, RegionConfig } from "./types";
 import { InfrastructureTierType, ComplianceLevel } from "@/types";
 
-export const initV2Command = new Command("init-v2")
-  .description("Initialize a new Soverstack project (v2 structure)")
+export const initCommand = new Command("init")
+  .description("Initialize a new Soverstack project")
   .argument("[project-name]", "Name of the project")
   .option("--domain <domain>", "Domain name (e.g., example.com)")
   .option("--tier <tier>", "Infrastructure tier: local, production, enterprise")

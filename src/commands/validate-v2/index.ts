@@ -14,8 +14,8 @@ import chalk from "chalk";
 import { validateProject } from "./logic";
 import { ValidationIssue } from "./types";
 
-export const validateV2Command = new Command("validate-v2")
-  .description("Validate a Soverstack v2 project")
+export const validateCommand = new Command("validate")
+  .description("Validate a Soverstack project")
   .argument("[path]", "Path to the project directory", ".")
   .action(async (projectPath: string) => {
     try {

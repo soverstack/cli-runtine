@@ -4,8 +4,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 // Import des commandes
-import { initV2Command } from './commands/init-v2';
-import { validateCommand } from './commands/validate';
+import { initCommand } from './commands/init-v2';
+import { validateCommand } from './commands/validate-v2';
 import { planCommand } from './commands/plan';
 import { applyCommand } from './commands/apply';
 import { destroyCommand } from './commands/destroy';
@@ -14,7 +14,6 @@ import { graphCommand } from './commands/graph';
 import { generateSshKeysCommand } from './commands/generate-ssh';
 import { addCommand } from './commands/add';
 import { generateCommand } from './commands/generate';
-import { validateV2Command } from './commands/validate-v2';
 
 const program = new Command();
 
@@ -25,7 +24,7 @@ program
   .version('1.0.0');
 
 // Ajouter toutes les commandes
-program.addCommand(initV2Command);
+program.addCommand(initCommand);
 program.addCommand(validateCommand);
 program.addCommand(planCommand);
 program.addCommand(applyCommand);
@@ -35,7 +34,6 @@ program.addCommand(graphCommand);
 program.addCommand(generateSshKeysCommand); // Deprecated, kept for backward compatibility
 program.addCommand(addCommand);
 program.addCommand(generateCommand);
-program.addCommand(validateV2Command);
 
 // Gestion des erreurs globales
 process.on('unhandledRejection', (error: Error) => {
