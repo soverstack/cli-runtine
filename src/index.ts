@@ -4,7 +4,6 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 
 // Import des commandes
-import { initCommand } from './commands/init';
 import { initV2Command } from './commands/init-v2';
 import { validateCommand } from './commands/validate';
 import { planCommand } from './commands/plan';
@@ -26,7 +25,6 @@ program
   .version('1.0.0');
 
 // Ajouter toutes les commandes
-program.addCommand(initCommand);
 program.addCommand(initV2Command);
 program.addCommand(validateCommand);
 program.addCommand(planCommand);
