@@ -36,6 +36,16 @@ import { validateSsh } from "./validators/ssh";
 import { validateWorkloadFile } from "./validators/workloads";
 import { validateRequiredWorkloads, validateHaConstraints } from "./validators/crossfile";
 
+// Schema validation (Zod — structural checks)
+import {
+  validatePlatformSchema,
+  validateRegionSchema,
+  validateNodesSchema,
+  validateNetworkSchema,
+  validateSshSchema,
+  validateWorkloadSchema,
+} from "./schemas/validate";
+
 // ════════════════════════════════════════════════════════════════════════════
 // MAIN ENTRY
 // ════════════════════════════════════════════════════════════════════════════
@@ -57,7 +67,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
   }
 
   // ════════════════════════════════════════════════════════════════════
-  // PHASE 1: Parse platform.yaml
+  // PHASE 1: Parse and validate platform.yaml
   // ════════════════════════════════════════════════════════════════════
   const platform = loadYaml<ParsedPlatform>(platformFile);
   if (!platform) {
@@ -65,6 +75,9 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
     return result;
   }
 
+  // Schema validation (structure, types, formats)
+  mergeResults(result, validatePlatformSchema(platform, "platform.yaml"));
+  // Logic validation (cross-references, state path, etc.)
   mergeResults(result, validatePlatform(platform, absPath));
 
   const tier = platform.infrastructure_tier || "production";
@@ -99,6 +112,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       continue;
     }
 
+    mergeResults(result, validateRegionSchema(parsedRegion, `inventory/${region.name}/region.yaml`));
     mergeResults(result, validateRegion(parsedRegion, region, topology));
 
     // Each datacenter in this region
@@ -116,6 +130,8 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       } else {
         const parsedNodes = loadYaml<ParsedNodes>(nodesFile);
         if (parsedNodes) {
+          const nodesRelPath = `inventory/${dc.region}/datacenters/${dc.name}/nodes.yaml`;
+          mergeResults(result, validateNodesSchema(parsedNodes, nodesRelPath));
           mergeResults(result, validateNodes(parsedNodes, dc, tier));
           // Collect node names for host validation
           const names = (parsedNodes.nodes || []).map((n) => n.name).filter(Boolean) as string[];
@@ -134,6 +150,8 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       } else {
         const parsedNetwork = loadYaml<ParsedNetwork>(networkFile);
         if (parsedNetwork) {
+          const netRelPath = `inventory/${dc.region}/datacenters/${dc.name}/network.yaml`;
+          mergeResults(result, validateNetworkSchema(parsedNetwork, netRelPath));
           mergeResults(result, validateNetwork(parsedNetwork, dc));
         }
       }
@@ -149,6 +167,8 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       } else {
         const parsedSsh = loadYaml<ParsedSsh>(sshFile);
         if (parsedSsh) {
+          const sshRelPath = `inventory/${dc.region}/datacenters/${dc.name}/ssh.yaml`;
+          mergeResults(result, validateSshSchema(parsedSsh, sshRelPath));
           mergeResults(result, validateSsh(parsedSsh, dc, absPath));
         }
       }
@@ -174,6 +194,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       const parsed = loadYaml<ParsedWorkloadFile>(file);
       if (parsed) {
         const relPath = path.relative(absPath, file).replace(/\\/g, "/");
+        mergeResults(result, validateWorkloadSchema(parsed, relPath));
         const wr = validateWorkloadFile(parsed, {
           filePath: relPath,
           expectedScope: "global",
@@ -198,6 +219,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
         const parsed = loadYaml<ParsedWorkloadFile>(file);
         if (parsed) {
           const relPath = path.relative(absPath, file).replace(/\\/g, "/");
+          mergeResults(result, validateWorkloadSchema(parsed, relPath));
           const wr = validateWorkloadFile(parsed, {
             filePath: relPath,
             expectedScope: "regional",
@@ -224,6 +246,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
         const parsed = loadYaml<ParsedWorkloadFile>(file);
         if (parsed) {
           const relPath = path.relative(absPath, file).replace(/\\/g, "/");
+          mergeResults(result, validateWorkloadSchema(parsed, relPath));
           const wr = validateWorkloadFile(parsed, {
             filePath: relPath,
             expectedScope: "zonal",
