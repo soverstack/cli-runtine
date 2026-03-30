@@ -138,19 +138,19 @@ export class ProjectInitializer {
     try {
       const soverstackPath = path.join(this.projectPath, ".soverstack");
 
-      this.options.regions.forEach((region: RegionConfig) => {
-        const includeHub = !this.options.skipHubs && regionOwnsHub(region);
-        const datacenters = getDatacenters(region, includeHub);
+      // state/ — global project state (state.json written by apply)
+      fs.mkdirSync(path.join(soverstackPath, "state"), { recursive: true });
+      fs.writeFileSync(path.join(soverstackPath, "state", ".gitkeep"), "");
 
-        datacenters.forEach((dc) => {
-          const dcPath = path.join(soverstackPath, region.name, dc.fullName);
-          fs.mkdirSync(path.join(dcPath, "state"), { recursive: true });
-          fs.mkdirSync(path.join(dcPath, "logs"), { recursive: true });
-          fs.writeFileSync(path.join(dcPath, "state", ".gitkeep"), "");
-          fs.writeFileSync(path.join(dcPath, "logs", ".gitkeep"), "");
-        });
-      });
+      // ansible/ — generated artifacts (overwritten each apply)
+      fs.mkdirSync(path.join(soverstackPath, "ansible"), { recursive: true });
+      fs.writeFileSync(path.join(soverstackPath, "ansible", ".gitkeep"), "");
 
+      // logs/ — one folder per apply run
+      fs.mkdirSync(path.join(soverstackPath, "logs"), { recursive: true });
+      fs.writeFileSync(path.join(soverstackPath, "logs", ".gitkeep"), "");
+
+      // cache/ — downloaded images, templates
       fs.mkdirSync(path.join(soverstackPath, "cache"), { recursive: true });
       fs.writeFileSync(path.join(soverstackPath, "cache", ".gitkeep"), "");
 
@@ -249,33 +249,16 @@ export class ProjectInitializer {
     const { primaryRegion, primaryZone, skipHubs, generateSshKeys: keysGenerated } = this.options;
 
     console.log(chalk.bold("Quick Start:\n"));
-    console.log(chalk.white("  1. ") + chalk.cyan("cd " + this.options.projectName));
+    let step = 1;
+    console.log(chalk.white(`  ${step++}. `) + chalk.cyan("cd " + this.options.projectName));
     if (!keysGenerated) {
-      console.log(chalk.white("  2. ") + chalk.cyan("soverstack generate:ssh-keys platform.yaml"));
+      console.log(chalk.white(`  ${step++}. `) + chalk.cyan("soverstack generate ssh --all"));
     }
-    console.log(
-      chalk.white(keysGenerated ? "  2. " : "  3. ") +
-        "Edit " +
-        chalk.cyan(".env") +
-        " - Set bootstrap passwords",
-    );
-    console.log(
-      chalk.white(keysGenerated ? "  3. " : "  4. ") +
-        "Edit " +
-        chalk.cyan(
-          "inventory/" + primaryRegion + "/datacenters/zone-" + primaryZone + "/nodes.yaml",
-        ) +
-        " - Set node IPs",
-    );
-    console.log(
-      chalk.white(keysGenerated ? "  4. " : "  5. ") +
-        chalk.cyan("soverstack bootstrap") +
-        " - Setup SSH access",
-    );
-    console.log(
-      chalk.white(keysGenerated ? "  5. " : "  6. ") + chalk.cyan("soverstack install proxmox"),
-    );
-    console.log(chalk.white(keysGenerated ? "  6. " : "  7. ") + chalk.cyan("soverstack apply"));
+    console.log(chalk.white(`  ${step++}. `) + "Edit " + chalk.cyan(".env") + " - Set bootstrap passwords from your provider");
+    console.log(chalk.white(`  ${step++}. `) + "Edit " + chalk.cyan(`inventory/${primaryRegion}/datacenters/zone-${primaryZone}/nodes.yaml`) + " - Set node IPs");
+    console.log(chalk.white(`  ${step++}. `) + chalk.cyan("soverstack validate") + " - Check configuration");
+    console.log(chalk.white(`  ${step++}. `) + chalk.cyan("soverstack plan") + " - Preview changes");
+    console.log(chalk.white(`  ${step++}. `) + chalk.cyan("soverstack apply") + " - Deploy everything");
 
     console.log(chalk.bold("\nProject Structure:\n"));
     console.log(chalk.gray("  platform.yaml         ") + "Global config (images, flavors)");
@@ -283,6 +266,7 @@ export class ProjectInitializer {
     console.log(chalk.gray("  .ssh/                 ") + "SSH keys (NEVER COMMIT)");
     console.log(chalk.gray("  inventory/            ") + "Physical infrastructure");
     console.log(chalk.gray("  workloads/            ") + "Services to deploy");
+    console.log(chalk.gray("  .soverstack/          ") + "Internal (state, logs, ansible artifacts)");
 
     console.log(chalk.bold("\nDatacenters:\n"));
     this.options.regions.forEach((region: RegionConfig) => {
@@ -307,6 +291,6 @@ export class ProjectInitializer {
       console.log(chalk.yellow("\n  Note: Hubs disabled (local tier)"));
     }
 
-    console.log(chalk.yellow("\nNever commit: .env, .ssh/, .soverstack/state/"));
+    console.log(chalk.yellow("\nNever commit: .env, .ssh/"));
   }
 }

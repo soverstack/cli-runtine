@@ -27,10 +27,9 @@ id_*
 *_soverstack
 !*.pub
 
-# Soverstack state and cache
-.soverstack/state/
-.soverstack/cache/
+# Soverstack internal
 .soverstack/logs/
+.soverstack/cache/
 
 # Terraform
 *.tfstate

@@ -33,11 +33,56 @@ function runSchema(
   if (!result.success) {
     for (const issue of result.error.issues) {
       const field = issue.path.length > 0 ? issue.path.join(".") : undefined;
-      addError(r, file, issue.message, field);
+
+      // Build a human-readable message that includes the field path
+      let message = issue.message;
+      if (field) {
+        // Resolve the field name to something readable
+        // e.g., "flavors.2.disk" → 'Field "disk" in flavors[2]'
+        const readablePath = formatPath(issue.path);
+        // Avoid duplicating if the message already mentions the field
+        if (!message.toLowerCase().includes(readablePath.toLowerCase())) {
+          message = `${readablePath}: ${message}`;
+        }
+      }
+
+      addError(r, file, message, field);
     }
   }
 
   return r;
+}
+
+/**
+ * Convert a Zod path like ["flavors", 2, "disk"] to a readable string
+ * like 'Flavor #3, field "disk"' or 'flavors[2].disk'
+ */
+function formatPath(parts: (string | number)[]): string {
+  // Try to make it human-friendly
+  const segments: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const next = parts[i + 1];
+
+    if (typeof part === "string" && typeof next === "number") {
+      // "flavors", 2 → 'flavors[2]'
+      segments.push(`${part}[${next}]`);
+      i++; // skip the number
+
+      // If there's a field after the index, add it
+      const field = parts[i + 1];
+      if (typeof field === "string") {
+        segments.push(`"${field}"`);
+        i++;
+      }
+    } else if (typeof part === "string") {
+      segments.push(`"${part}"`);
+    } else {
+      segments.push(`[${part}]`);
+    }
+  }
+
+  return segments.join(" → ");
 }
 
 // ════════════════════════════════════════════════════════════════════════════

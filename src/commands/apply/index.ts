@@ -29,8 +29,7 @@ export const applyCommand = new Command("apply")
   .argument("[path]", "Path to the project directory", ".")
   .option("-v, --verbose", "Show detailed output")
   .option("--debug", "Show debug information")
-  .option("--dry-run", "Generate artifacts without executing Ansible")
-  .action(async (projectPath: string, opts: { verbose?: boolean; debug?: boolean; dryRun?: boolean }) => {
+  .action(async (projectPath: string, opts: { verbose?: boolean; debug?: boolean }) => {
     const startTime = Date.now();
 
     // Set log level
@@ -86,14 +85,6 @@ export const applyCommand = new Command("apply")
     const logDir = createLogDir(absPath);
     savePlanLog(logDir, plan);
     log.debug(`Logs: ${logDir}`);
-
-    // ── Dry run stops here ───────────────────────────────────────────
-    if (opts.dryRun) {
-      log.blank();
-      log.success("Dry run complete. Artifacts generated at .soverstack/ansible/");
-      printSummary(plan, startTime);
-      return;
-    }
 
     // ── Execute phases ───────────────────────────────────────────────
     let failed = false;
