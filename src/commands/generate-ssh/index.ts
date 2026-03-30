@@ -132,24 +132,31 @@ export const generateSshCommand = new Command("ssh")
       // Check for existing keys
       const dcNames = targetDatacenters.map(({ dc }) => dc.fullName);
       const existingKeys = checkExistingSshKeys(sshDir, dcNames);
+      const isRotation = existingKeys.length > 0;
 
-      if (existingKeys.length > 0 && !options.force) {
-        console.log(chalk.yellow("  Some keys already exist:"));
+      if (isRotation && !options.force) {
+        console.log(chalk.yellow("  Existing keys found (will be backed up to .ssh/.previous/):"));
         existingKeys.forEach((key) => {
           console.log(chalk.gray(`    - .ssh/${key}`));
         });
         console.log("");
+        console.log(chalk.yellow("  ┌──────────────────────────────────────────────────────────────┐"));
+        console.log(chalk.yellow("  │  The current keys will be moved to .ssh/.previous/          │"));
+        console.log(chalk.yellow("  │  DO NOT delete .ssh/.previous/ until the next apply         │"));
+        console.log(chalk.yellow("  │  succeeds — it is needed to connect and deploy new keys.    │"));
+        console.log(chalk.yellow("  └──────────────────────────────────────────────────────────────┘"));
+        console.log("");
 
-        const { overwrite } = await inquirer.prompt([
+        const { confirm } = await inquirer.prompt([
           {
             type: "confirm",
-            name: "overwrite",
-            message: "Overwrite existing keys?",
+            name: "confirm",
+            message: "Generate new keys and backup current ones?",
             default: false,
           },
         ]);
 
-        if (!overwrite) {
+        if (!confirm) {
           console.log(chalk.yellow("\nAborted."));
           process.exit(0);
         }
@@ -158,6 +165,36 @@ export const generateSshCommand = new Command("ssh")
       // Create .ssh directory if needed
       if (!fs.existsSync(sshDir)) {
         fs.mkdirSync(sshDir, { recursive: true });
+      }
+
+      // Backup existing keys to .previous/ if rotating
+      if (isRotation) {
+        const previousDir = path.join(sshDir, ".previous");
+
+        // Clean old .previous/ if exists
+        if (fs.existsSync(previousDir)) {
+          fs.rmSync(previousDir, { recursive: true });
+        }
+        fs.mkdirSync(previousDir, { recursive: true });
+
+        let backedUp = 0;
+        for (const keyName of existingKeys) {
+          const srcPrivate = path.join(sshDir, keyName);
+          const srcPublic = path.join(sshDir, keyName + ".pub");
+          const dstPrivate = path.join(previousDir, keyName);
+          const dstPublic = path.join(previousDir, keyName + ".pub");
+
+          if (fs.existsSync(srcPrivate)) {
+            fs.copyFileSync(srcPrivate, dstPrivate);
+            backedUp++;
+          }
+          if (fs.existsSync(srcPublic)) {
+            fs.copyFileSync(srcPublic, dstPublic);
+          }
+        }
+
+        console.log(chalk.gray(`  Backed up ${backedUp} key(s) to .ssh/.previous/`));
+        console.log("");
       }
 
       // Generate keys
@@ -191,11 +228,19 @@ export const generateSshCommand = new Command("ssh")
         console.log(chalk.green(`  ✓ Generated ${generated} SSH keys in .ssh/`));
       }
 
-      console.log("");
-      console.log(chalk.white("  Next steps:"));
-      console.log(chalk.gray("    1. Edit .env - Set bootstrap passwords from your provider"));
-      console.log(chalk.gray("    2. Edit inventory/.../nodes.yaml - Set actual node IPs"));
-      console.log(chalk.cyan("    3. soverstack bootstrap") + chalk.gray(" - Deploy keys to servers"));
+      if (isRotation) {
+        console.log("");
+        console.log(chalk.white("  Next step:"));
+        console.log(chalk.cyan("    soverstack apply") + chalk.gray(" — will rotate keys on servers using .ssh/.previous/"));
+        console.log("");
+        console.log(chalk.yellow("  Do NOT delete .ssh/.previous/ until apply succeeds."));
+      } else {
+        console.log("");
+        console.log(chalk.white("  Next steps:"));
+        console.log(chalk.gray("    1. Edit .env — set bootstrap passwords from your provider"));
+        console.log(chalk.gray("    2. Edit inventory/.../nodes.yaml — set actual node IPs"));
+        console.log(chalk.cyan("    3. soverstack apply"));
+      }
       console.log("");
     } catch (error) {
       console.log(chalk.red("\nFailed to generate SSH keys:"));

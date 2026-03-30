@@ -1,4 +1,4 @@
-# Soverstack Init V2
+# Soverstack Init
 
 New project structure with clear separation between physical infrastructure (inventory) and logical services (workloads).
 
@@ -56,25 +56,25 @@ soverstack init-v2 my-project \
 
 ## Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--domain` | Domain name | `example.com` |
-| `--tier` | Infrastructure tier: `local`, `production`, `enterprise` | `production` |
-| `--regions` | Regions and zones (format: `region:zone1,zone2;region2:zone`) | `eu:main` |
-| `--non-interactive` | Skip prompts | `false` |
+| Option              | Description                                                   | Default       |
+| ------------------- | ------------------------------------------------------------- | ------------- |
+| `--domain`          | Domain name                                                   | `example.com` |
+| `--tier`            | Infrastructure tier: `local`, `production`, `enterprise`      | `production`  |
+| `--regions`         | Regions and zones (format: `region:zone1,zone2;region2:zone`) | `eu:main`     |
+| `--non-interactive` | Skip prompts                                                  | `false`       |
 
 ## Network Architecture
 
 ### VLANs
 
-| VLAN | Name | Mesh | MTU | Zone | Hub | Usage |
-|------|------|------|-----|------|-----|-------|
-| 10 | management | Yes | 1500 | ✅ | ✅ | Proxmox API, SSH, Soverstack |
-| 11 | corosync | No | 9000 | ✅ | ✅ | Proxmox cluster, HA, Quorum |
-| 20 | vm-network | Yes | 1500 | ✅ | ❌ | VM traffic |
-| 30 | ceph-public | No | 9000 | ✅ | ❌ | VM to Ceph |
-| 31 | ceph-cluster | No | 9000 | ✅ | ❌ | OSD replication |
-| 40 | backup | Yes | 1500 | ✅ | ✅ | Zone to Hub backup |
+| VLAN | Name         | Mesh | MTU  | Zone | Hub | Usage                        |
+| ---- | ------------ | ---- | ---- | ---- | --- | ---------------------------- |
+| 10   | management   | Yes  | 1500 | ✅   | ✅  | Proxmox API, SSH, Soverstack |
+| 11   | corosync     | No   | 9000 | ✅   | ✅  | Proxmox cluster, HA, Quorum  |
+| 20   | vm-network   | Yes  | 1500 | ✅   | ❌  | VM traffic                   |
+| 30   | ceph-public  | No   | 9000 | ✅   | ❌  | VM to Ceph                   |
+| 31   | ceph-cluster | No   | 9000 | ✅   | ❌  | OSD replication              |
+| 40   | backup       | Yes  | 1500 | ✅   | ✅  | Zone to Hub backup           |
 
 ### Mesh vs Direct
 
@@ -86,7 +86,7 @@ soverstack init-v2 my-project \
 ```yaml
 # Only in zones (required for control plane, optional for others)
 public_ips:
-  type: allocated_block          # allocated_block | bgp
+  type: allocated_block # allocated_block | bgp
   allocated_block:
     block: "203.0.113.0/29"
     gateway: "203.0.113.1"
@@ -97,11 +97,11 @@ Soverstack automatically assigns IPs to services (firewall, dns, ingress, vpn).
 
 ### Subnet Scheme
 
-| Region | Octet | Example |
-|--------|-------|---------|
-| eu | 1 | `10.1.x.0/24` |
-| us | 2 | `10.2.x.0/24` |
-| asia | 3 | `10.3.x.0/24` |
+| Region | Octet | Example       |
+| ------ | ----- | ------------- |
+| eu     | 1     | `10.1.x.0/24` |
+| us     | 2     | `10.2.x.0/24` |
+| asia   | 3     | `10.3.x.0/24` |
 
 ## Key Concepts
 
@@ -112,19 +112,19 @@ Soverstack automatically assigns IPs to services (firewall, dns, ingress, vpn).
 
 ### Datacenter Types
 
-| Type | Purpose | VLANs | Public IPs |
-|------|---------|-------|------------|
-| Zone (control plane) | Production + global services | All 6 | Required |
-| Zone (other) | Production compute | All 6 | Optional |
-| Hub | Backup storage | 3 (10, 11, 40) | None |
+| Type                 | Purpose                      | VLANs          | Public IPs |
+| -------------------- | ---------------------------- | -------------- | ---------- |
+| Zone (control plane) | Production + global services | All 6          | Required   |
+| Zone (other)         | Production compute           | All 6          | Optional   |
+| Hub                  | Backup storage               | 3 (10, 11, 40) | None       |
 
 ### Infrastructure Tiers
 
-| Tier | Nodes | Hub | HA |
-|------|-------|-----|-----|
-| local | 1+ | No | Optional |
-| production | 3+ | Yes | Enforced |
-| enterprise | 5+ | Yes | Enforced + Backup |
+| Tier       | Nodes | Hub | HA                |
+| ---------- | ----- | --- | ----------------- |
+| local      | 1+    | No  | Optional          |
+| production | 3+    | Yes | Enforced          |
+| enterprise | 5+    | Yes | Enforced + Backup |
 
 ### Images
 

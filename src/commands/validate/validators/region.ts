@@ -25,65 +25,58 @@ export function validateRegion(
 
   // ── Name ─────────────────────────────────────────────────────────────
   if (!parsed.name) {
-    addError(r, file, "name is required", "name");
+    addError(r, file, "Missing region name", "name", 'Add: name: <region-name>');
   } else if (!NAME_RE.test(parsed.name)) {
-    addError(r, file, "name must be lowercase alphanumeric with hyphens", "name");
+    addError(r, file, `Region name "${parsed.name}" is invalid. Use only lowercase letters, numbers, and hyphens`, "name");
   } else if (parsed.name !== discovered.name) {
-    addError(r, file, `name "${parsed.name}" does not match directory name "${discovered.name}"`, "name");
+    addError(r, file, `Region name "${parsed.name}" does not match the directory name "${discovered.name}". They must be the same`, "name");
   }
 
   // ── DNS zone ─────────────────────────────────────────────────────────
   if (!parsed.dns_zone) {
-    addError(r, file, "dns_zone is required", "dns_zone");
+    addError(r, file, "Missing DNS zone", "dns_zone", "Add: dns_zone: eu.example.com");
   } else if (!DNS_ZONE_RE.test(parsed.dns_zone)) {
-    addError(r, file, "dns_zone format is invalid", "dns_zone");
+    addError(r, file, `DNS zone "${parsed.dns_zone}" is not a valid domain format (e.g., eu.example.com)`, "dns_zone");
   }
 
   // ── Hub reference ────────────────────────────────────────────────────
   if (parsed.hub) {
-    // Hub must exist as a hub-* datacenter somewhere in the topology
     const hubDc = topology.allDatacenters.find((dc) => dc.name === parsed.hub);
     if (!hubDc) {
-      addError(r, file, `hub "${parsed.hub}" not found in any region`, "hub", "Hub must be a hub-* directory in inventory/<region>/datacenters/");
+      addError(r, file, `Hub "${parsed.hub}" does not exist. No hub-* directory with that name was found in any region`, "hub");
     } else if (hubDc.type !== "hub") {
-      addError(r, file, `hub "${parsed.hub}" is not a hub datacenter (prefix must be hub-)`, "hub");
+      addError(r, file, `"${parsed.hub}" is not a hub datacenter. Hub names must start with "hub-"`, "hub");
     }
   }
 
   // ── Tier constraints ─────────────────────────────────────────────────
   if (topology.tier === "local") {
-    // Local: no hub expected
     if (parsed.hub) {
-      addWarning(r, file, "hub is set but tier is local (hubs are not used in local tier)", "hub");
+      addWarning(r, file, "Hub is configured but the infrastructure tier is \"local\" (hubs are only used in production/enterprise)", "hub");
     }
-    // Local: should not have hub-* datacenters
     const hubs = discovered.datacenters.filter((dc) => dc.type === "hub");
     if (hubs.length > 0) {
-      addWarning(r, file, `Hub datacenters found in local tier: ${hubs.map((h) => h.name).join(", ")}`, undefined, "Remove hub-* directories or change tier");
+      addWarning(r, file, `Hub datacenter(s) found but tier is "local": ${hubs.map((h) => h.name).join(", ")}`, undefined, "Remove hub-* directories or change the tier to production/enterprise");
     }
   } else {
-    // Production/Enterprise: hub required (own or shared)
     if (!parsed.hub) {
-      addError(r, file, "hub is required for production/enterprise tier", "hub", "Add hub: hub-<name> or reference a shared hub");
+      addError(r, file, `Region "${discovered.name}" has no hub configured. Production and enterprise tiers require a hub for backup and storage`, "hub", "Add: hub: hub-<name> (or reference a hub from another region)");
     }
   }
 
   // ── Datacenters discovered ───────────────────────────────────────────
   if (discovered.datacenters.length === 0) {
-    addError(r, file, "No datacenters found in inventory/" + discovered.name + "/datacenters/", undefined, "Create at least one zone-* directory");
+    addError(r, file, `No datacenters found in inventory/${discovered.name}/datacenters/`, undefined, "Create at least one zone-* directory with nodes.yaml, network.yaml, and ssh.yaml");
   }
 
-  // Verify each datacenter has required files
-  // (This is checked in detail by nodes/network/ssh validators,
-  //  but we flag missing directories here for clarity)
   const zones = discovered.datacenters.filter((dc) => dc.type === "zone");
-  if (zones.length === 0) {
-    addError(r, file, "At least one zone datacenter is required", undefined, "Create a zone-* directory in datacenters/");
+  if (zones.length === 0 && discovered.datacenters.length > 0) {
+    addError(r, file, "No zone datacenters found. Each region needs at least one zone for production workloads", undefined, "Create a zone-* directory in datacenters/");
   }
 
   // ── Compliance ───────────────────────────────────────────────────────
   if (parsed.compliance && !Array.isArray(parsed.compliance)) {
-    addError(r, file, "compliance must be an array", "compliance");
+    addError(r, file, "Compliance must be a list (e.g., [gdpr, pci-dss])", "compliance");
   }
 
   return r;
@@ -94,14 +87,13 @@ export function validateRegion(
  */
 export function validateTopologyConstraints(topology: DiscoveredTopology): ValidationResult {
   const r = createResult();
-  const file = "inventory/";
 
   // ── Globally unique datacenter names ─────────────────────────────────
-  const seen = new Map<string, string>(); // dc name -> region
+  const seen = new Map<string, string>();
   for (const dc of topology.allDatacenters) {
     const existing = seen.get(dc.name);
     if (existing && existing !== dc.region) {
-      addError(r, file, `Duplicate datacenter name "${dc.name}" in regions ${existing} and ${dc.region}`, undefined, "Datacenter names must be globally unique");
+      addError(r, "inventory/", `Datacenter "${dc.name}" exists in both region "${existing}" and region "${dc.region}". Datacenter names must be unique across the entire project`);
     }
     seen.set(dc.name, dc.region);
   }
@@ -110,9 +102,9 @@ export function validateTopologyConstraints(topology: DiscoveredTopology): Valid
   if (topology.globalPlacementDc) {
     const cpDc = topology.allDatacenters.find((dc) => dc.name === topology.globalPlacementDc);
     if (!cpDc) {
-      addError(r, "platform.yaml", `global_placement datacenter "${topology.globalPlacementDc}" not found in inventory`, "defaults.global_placement.datacenter");
+      addError(r, "platform.yaml", `Control plane datacenter "${topology.globalPlacementDc}" was not found in any region. Check defaults.global_placement.datacenter`, "defaults.global_placement.datacenter");
     } else if (cpDc.type !== "zone") {
-      addError(r, "platform.yaml", `global_placement datacenter "${topology.globalPlacementDc}" must be a zone (not a hub)`, "defaults.global_placement.datacenter");
+      addError(r, "platform.yaml", `Control plane datacenter "${topology.globalPlacementDc}" is a hub, but global services must run on a zone. Change global_placement to a zone-* datacenter`, "defaults.global_placement.datacenter");
     }
   }
 

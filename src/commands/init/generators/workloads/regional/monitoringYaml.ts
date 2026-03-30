@@ -75,7 +75,7 @@ ${
     scope: regional
     region: ${region.name}
     implementation: loki          # loki | elasticsearch | graylog
-    ${versionLine("loki")}
+${versionLine("loki")}
     instances:
       - name: logs-${region.name}-01
         vm_id: ${vmId("regional", regionId, 0, "logs", 0)}
@@ -101,7 +101,7 @@ ${
     scope: regional
     region: ${region.name}
     implementation: alertmanager  # alertmanager | grafana-alerting
-    ${versionLine("alertmanager")}
+${versionLine("alertmanager")}
     instances:
       - name: alerting-${region.name}-01
         vm_id: ${vmId("regional", regionId, 0, "alerting", 0)}
@@ -130,7 +130,7 @@ ${
     scope: regional
     region: ${region.name}
     implementation: grafana       # grafana | kibana
-    ${versionLine("grafana")}
+${versionLine("grafana")}
     instances:
       - name: dashboards-01
         vm_id: ${vmId("regional", regionId, 0, "dashboards", 0)}

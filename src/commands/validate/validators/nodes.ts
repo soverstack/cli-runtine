@@ -26,7 +26,7 @@ export function validateNodes(
 
   // ── Nodes array ──────────────────────────────────────────────────────
   if (!parsed.nodes || !Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
-    addError(r, file, "At least one node is required", "nodes");
+    addError(r, file, "No nodes defined. At least one Proxmox server is required", "nodes");
     return r;
   }
 
@@ -36,7 +36,11 @@ export function validateNodes(
     : (tier === "enterprise" ? 5 : tier === "production" ? 3 : 1);
 
   if (parsed.nodes.length < minNodes) {
-    addError(r, file, `${tier} tier requires at least ${minNodes} nodes for ${dc.type}, found ${parsed.nodes.length}`, "nodes");
+    addError(r, file,
+      `Found ${parsed.nodes.length} node(s) but the ${tier} tier requires at least ${minNodes} for a ${dc.type} datacenter`,
+      "nodes",
+      tier !== "local" ? "Add more servers or change the infrastructure tier" : undefined,
+    );
   }
 
   // ── Individual nodes ─────────────────────────────────────────────────
@@ -44,66 +48,62 @@ export function validateNodes(
   let primaryCount = 0;
 
   for (const node of parsed.nodes) {
-    // Name
+    const label = node.name ? `Node "${node.name}"` : "A node";
+
     if (!node.name) {
-      addError(r, file, "Node name is required", "nodes[].name");
+      addError(r, file, "A node is missing a name", "nodes.name");
     } else if (nodeNames.has(node.name)) {
-      addError(r, file, `Duplicate node name: ${node.name}`, "nodes[].name");
+      addError(r, file, `Node "${node.name}" is defined more than once`, "nodes.name");
     } else {
       nodeNames.add(node.name);
     }
 
-    // Address
     if (!node.address) {
-      addError(r, file, `Node ${node.name || "?"}: address is required`, "nodes[].address");
+      addError(r, file, `${label}: Missing IP address`, "nodes.address", "Add the server IP from your provider");
     } else if (!IP_RE.test(node.address)) {
-      addError(r, file, `Node ${node.name || "?"}: invalid IP address "${node.address}"`, "nodes[].address");
+      addError(r, file, `${label}: "${node.address}" is not a valid IP address (e.g., 10.1.10.10)`, "nodes.address");
     } else {
-      // Validate octets
       const octets = node.address.split(".").map(Number);
       if (octets.some((o) => o < 0 || o > 255)) {
-        addError(r, file, `Node ${node.name || "?"}: IP octets must be 0-255`, "nodes[].address");
+        addError(r, file, `${label}: IP address "${node.address}" has octets outside 0-255`, "nodes.address");
       }
     }
 
-    // Role
     if (!node.role) {
-      addError(r, file, `Node ${node.name || "?"}: role is required`, "nodes[].role");
+      addError(r, file, `${label}: Missing role (primary or secondary)`, "nodes.role");
     } else if (!VALID_NODE_ROLES.includes(node.role)) {
-      addError(r, file, `Node ${node.name || "?"}: role must be one of: ${VALID_NODE_ROLES.join(", ")}`, "nodes[].role");
+      addError(r, file, `${label}: Role "${node.role}" is not valid. Use: ${VALID_NODE_ROLES.join(" or ")}`, "nodes.role");
     } else if (node.role === "primary") {
       primaryCount++;
     }
 
-    // Capabilities
     if (node.capabilities && Array.isArray(node.capabilities)) {
       for (const cap of node.capabilities) {
         if (!VALID_NODE_CAPABILITIES.includes(cap)) {
-          addWarning(r, file, `Node ${node.name || "?"}: unknown capability "${cap}"`, "nodes[].capabilities");
+          addWarning(r, file, `${label}: Unknown capability "${cap}". Known capabilities: ${VALID_NODE_CAPABILITIES.join(", ")}`, "nodes.capabilities");
         }
       }
     }
 
-    // Bootstrap
     if (node.bootstrap) {
       if (!node.bootstrap.user) {
-        addError(r, file, `Node ${node.name || "?"}: bootstrap.user is required`, "nodes[].bootstrap.user");
+        addError(r, file, `${label}: Missing bootstrap user (usually "root")`, "nodes.bootstrap.user");
       }
       if (node.bootstrap.port !== undefined) {
         if (node.bootstrap.port < 1 || node.bootstrap.port > 65535) {
-          addError(r, file, `Node ${node.name || "?"}: bootstrap.port must be 1-65535`, "nodes[].bootstrap.port");
+          addError(r, file, `${label}: Bootstrap port ${node.bootstrap.port} is outside valid range (1-65535)`, "nodes.bootstrap.port");
         }
       }
       if (node.bootstrap.password) {
         const pwd = node.bootstrap.password;
         if (!pwd.type || !VALID_CREDENTIAL_TYPES.includes(pwd.type)) {
-          addError(r, file, `Node ${node.name || "?"}: bootstrap.password.type must be one of: ${VALID_CREDENTIAL_TYPES.join(", ")}`, "nodes[].bootstrap.password.type");
+          addError(r, file, `${label}: Bootstrap password type is missing or invalid. Use: ${VALID_CREDENTIAL_TYPES.join(", ")}`, "nodes.bootstrap.password.type");
         }
         if (pwd.type === "env" && !pwd.var_name) {
-          addError(r, file, `Node ${node.name || "?"}: bootstrap.password.var_name required for type: env`, "nodes[].bootstrap.password.var_name");
+          addError(r, file, `${label}: Bootstrap password uses type "env" but no variable name is specified`, "nodes.bootstrap.password.var_name", "Add: var_name: PVE_<NODE>_BOOTSTRAP_PASSWORD");
         }
         if ((pwd.type === "vault" || pwd.type === "file") && !pwd.path) {
-          addError(r, file, `Node ${node.name || "?"}: bootstrap.password.path required for type: ${pwd.type}`, "nodes[].bootstrap.password.path");
+          addError(r, file, `${label}: Bootstrap password uses type "${pwd.type}" but no path is specified`, "nodes.bootstrap.password.path");
         }
       }
     }
@@ -111,15 +111,15 @@ export function validateNodes(
 
   // ── Exactly one primary ──────────────────────────────────────────────
   if (primaryCount === 0) {
-    addError(r, file, "Exactly one node must have role: primary", "nodes[].role");
+    addError(r, file, "No primary node defined. Exactly one node must have role: primary", "nodes.role");
   } else if (primaryCount > 1) {
-    addError(r, file, `Only one node can be primary (found ${primaryCount})`, "nodes[].role");
+    addError(r, file, `${primaryCount} nodes are marked as primary, but only one is allowed`, "nodes.role");
   }
 
   // ── Ceph (zones only) ───────────────────────────────────────────────
   if (dc.type === "zone" && parsed.ceph?.enabled) {
     if (parsed.nodes.length < 3) {
-      addWarning(r, file, "Ceph requires at least 3 nodes for quorum", "ceph");
+      addWarning(r, file, `Ceph is enabled but only ${parsed.nodes.length} node(s) defined. Ceph needs at least 3 nodes for quorum`, "ceph");
     }
   }
 

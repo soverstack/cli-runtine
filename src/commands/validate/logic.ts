@@ -1,7 +1,7 @@
 /**
- * Soverstack Validate V2 - Main Logic
+ * Soverstack Validate - Main Logic
  *
- * Orchestrates validation of the v2 project structure.
+ * Orchestrates validation of the project structure.
  * 1. Discover topology from filesystem
  * 2. Parse all YAML files
  * 3. Validate per-file rules
@@ -65,7 +65,7 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
     return result;
   }
 
-  mergeResults(result, validatePlatform(platform));
+  mergeResults(result, validatePlatform(platform, absPath));
 
   const tier = platform.infrastructure_tier || "production";
   const globalPlacementDc = platform.defaults?.global_placement?.datacenter;
@@ -108,7 +108,11 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       // ── nodes.yaml ───────────────────────────────────────────────
       const nodesFile = path.join(dcDir, "nodes.yaml");
       if (!fs.existsSync(nodesFile)) {
-        addError(result, `inventory/${dc.region}/datacenters/${dc.name}/nodes.yaml`, "nodes.yaml not found");
+        addError(
+          result,
+          `inventory/${dc.region}/datacenters/${dc.name}/nodes.yaml`,
+          "nodes.yaml not found",
+        );
       } else {
         const parsedNodes = loadYaml<ParsedNodes>(nodesFile);
         if (parsedNodes) {
@@ -122,7 +126,11 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       // ── network.yaml ─────────────────────────────────────────────
       const networkFile = path.join(dcDir, "network.yaml");
       if (!fs.existsSync(networkFile)) {
-        addError(result, `inventory/${dc.region}/datacenters/${dc.name}/network.yaml`, "network.yaml not found");
+        addError(
+          result,
+          `inventory/${dc.region}/datacenters/${dc.name}/network.yaml`,
+          "network.yaml not found",
+        );
       } else {
         const parsedNetwork = loadYaml<ParsedNetwork>(networkFile);
         if (parsedNetwork) {
@@ -133,7 +141,11 @@ export async function validateProject(projectPath: string): Promise<ValidationRe
       // ── ssh.yaml ─────────────────────────────────────────────────
       const sshFile = path.join(dcDir, "ssh.yaml");
       if (!fs.existsSync(sshFile)) {
-        addError(result, `inventory/${dc.region}/datacenters/${dc.name}/ssh.yaml`, "ssh.yaml not found");
+        addError(
+          result,
+          `inventory/${dc.region}/datacenters/${dc.name}/ssh.yaml`,
+          "ssh.yaml not found",
+        );
       } else {
         const parsedSsh = loadYaml<ParsedSsh>(sshFile);
         if (parsedSsh) {
@@ -270,7 +282,7 @@ function discoverTopology(
   tier: string,
   globalPlacementDc: string | undefined,
   flavorNames: string[],
-  imageNames: string[]
+  imageNames: string[],
 ): DiscoveredTopology {
   const inventoryDir = path.join(projectPath, "inventory");
   const regions: DiscoveredRegion[] = [];
@@ -335,7 +347,7 @@ function collectInstanceCounts(
   scope: string,
   region: string | undefined,
   dc: string | undefined,
-  counts: Map<string, number>
+  counts: Map<string, number>,
 ): void {
   if (!parsed.services) return;
   for (const svc of parsed.services) {

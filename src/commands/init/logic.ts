@@ -1,5 +1,5 @@
 /**
- * Soverstack Init V2 - Main Logic
+ * Soverstack Init - Main Logic
  *
  * Orchestrates the generation of the new project structure.
  * See types.ts for structure documentation.
@@ -253,15 +253,28 @@ export class ProjectInitializer {
     if (!keysGenerated) {
       console.log(chalk.white("  2. ") + chalk.cyan("soverstack generate:ssh-keys platform.yaml"));
     }
-    console.log(chalk.white(keysGenerated ? "  2. " : "  3. ") + "Edit " + chalk.cyan(".env") + " - Set bootstrap passwords");
+    console.log(
+      chalk.white(keysGenerated ? "  2. " : "  3. ") +
+        "Edit " +
+        chalk.cyan(".env") +
+        " - Set bootstrap passwords",
+    );
     console.log(
       chalk.white(keysGenerated ? "  3. " : "  4. ") +
         "Edit " +
-        chalk.cyan("inventory/" + primaryRegion + "/datacenters/zone-" + primaryZone + "/nodes.yaml") +
-        " - Set node IPs"
+        chalk.cyan(
+          "inventory/" + primaryRegion + "/datacenters/zone-" + primaryZone + "/nodes.yaml",
+        ) +
+        " - Set node IPs",
     );
-    console.log(chalk.white(keysGenerated ? "  4. " : "  5. ") + chalk.cyan("soverstack bootstrap") + " - Setup SSH access");
-    console.log(chalk.white(keysGenerated ? "  5. " : "  6. ") + chalk.cyan("soverstack install proxmox"));
+    console.log(
+      chalk.white(keysGenerated ? "  4. " : "  5. ") +
+        chalk.cyan("soverstack bootstrap") +
+        " - Setup SSH access",
+    );
+    console.log(
+      chalk.white(keysGenerated ? "  5. " : "  6. ") + chalk.cyan("soverstack install proxmox"),
+    );
     console.log(chalk.white(keysGenerated ? "  6. " : "  7. ") + chalk.cyan("soverstack apply"));
 
     console.log(chalk.bold("\nProject Structure:\n"));
@@ -285,8 +298,7 @@ export class ProjectInitializer {
       region.zones.forEach((zone) => {
         const isControlPlane = isControlPlaneRegion && zone === primaryZone;
         console.log(
-          chalk.gray("    zone-" + zone) +
-            (isControlPlane ? chalk.cyan(" (control plane)") : "")
+          chalk.gray("    zone-" + zone) + (isControlPlane ? chalk.cyan(" (control plane)") : ""),
         );
       });
     });

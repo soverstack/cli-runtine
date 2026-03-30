@@ -1,5 +1,5 @@
 /**
- * Soverstack Init V2 - Generators Index
+ * Soverstack Init - Generators Index
  *
  * Re-export all file generators from their respective modules.
  */
@@ -20,7 +20,7 @@ export {
   generateSshKeys,
   generateSshKeyPair,
   checkExistingSshKeys,
-  SSH_USERS
+  SSH_USERS,
 } from "./inventory/sshYaml";
 export { generateRegionYaml } from "./inventory/regionYaml";
 export { generateNetworkYaml } from "./inventory/networkYaml";

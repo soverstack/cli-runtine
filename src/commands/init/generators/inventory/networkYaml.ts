@@ -27,17 +27,6 @@ function getRegionOctet(regionName: string): number {
   return mapping[regionName] || 1;
 }
 
-/**
- * Get datacenter octet offset
- * hub=50, zone index based
- */
-function getDcOctet(datacenter: DatacenterConfig, zoneIndex: number): number {
-  if (datacenter.type === "hub") {
-    return 50; // Hub uses .50.x
-  }
-  return 10 + zoneIndex * 10; // Zones use .10.x, .20.x, etc. (but we use fixed per VLAN)
-}
-
 export function generateNetworkYaml({ ctx, region, datacenter }: NetworkYamlOptions): void {
   const { projectPath, options } = ctx;
   const dcDir = path.join(
@@ -45,7 +34,7 @@ export function generateNetworkYaml({ ctx, region, datacenter }: NetworkYamlOpti
     "inventory",
     region.name,
     "datacenters",
-    datacenter.fullName
+    datacenter.fullName,
   );
   const filePath = path.join(dcDir, "network.yaml");
 

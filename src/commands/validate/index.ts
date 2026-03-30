@@ -5,7 +5,7 @@
  *
  * Usage:
  *   soverstack validate [path]
- *   soverstack validate ./my-project
+ *   soverstack validate [path] -v       (show field paths)
  */
 
 import { Command } from "commander";
@@ -17,23 +17,23 @@ import { ValidationIssue } from "./types";
 export const validateCommand = new Command("validate")
   .description("Validate a Soverstack project")
   .argument("[path]", "Path to the project directory", ".")
-  .action(async (projectPath: string) => {
+  .option("-v, --verbose", "Show technical field paths")
+  .action(async (projectPath: string, opts: { verbose?: boolean }) => {
     try {
       console.log("");
-      console.log(chalk.cyan.bold("  SOVERSTACK VALIDATE V2"));
+      console.log(chalk.cyan.bold("  SOVERSTACK VALIDATE"));
       console.log(chalk.gray("  Checking project structure and configuration...\n"));
 
       const result = await validateProject(projectPath);
 
-      // ── Display results ────────────────────────────────────────────
       if (result.errors.length > 0) {
         console.log(chalk.red.bold(`  ✗ ${result.errors.length} error(s)\n`));
-        printIssues(result.errors, "red");
+        printIssues(result.errors, "red", opts.verbose);
       }
 
       if (result.warnings.length > 0) {
         console.log(chalk.yellow.bold(`  ⚠ ${result.warnings.length} warning(s)\n`));
-        printIssues(result.warnings, "yellow");
+        printIssues(result.warnings, "yellow", opts.verbose);
       }
 
       if (result.valid) {
@@ -43,7 +43,9 @@ export const validateCommand = new Command("validate")
         }
         console.log("");
       } else {
-        console.log(chalk.red.bold(`\n  ✗ Validation failed with ${result.errors.length} error(s)`));
+        console.log(
+          chalk.red.bold(`\n  ✗ Validation failed with ${result.errors.length} error(s)`),
+        );
         console.log("");
         process.exitCode = 1;
       }
@@ -54,8 +56,7 @@ export const validateCommand = new Command("validate")
     }
   });
 
-function printIssues(issues: ValidationIssue[], color: "red" | "yellow"): void {
-  // Group by file
+function printIssues(issues: ValidationIssue[], color: "red" | "yellow", verbose?: boolean): void {
   const grouped = new Map<string, ValidationIssue[]>();
   for (const issue of issues) {
     const list = grouped.get(issue.file) || [];
@@ -67,10 +68,12 @@ function printIssues(issues: ValidationIssue[], color: "red" | "yellow"): void {
     console.log(chalk.gray(`  ${file}`));
     for (const issue of fileIssues) {
       const colorFn = color === "red" ? chalk.red : chalk.yellow;
-      const fieldStr = issue.field ? chalk.dim(` [${issue.field}]`) : "";
-      console.log(`    ${colorFn("→")} ${issue.message}${fieldStr}`);
+      console.log(`    ${colorFn("→")} ${issue.message}`);
       if (issue.hint) {
         console.log(chalk.dim(`      ${issue.hint}`));
+      }
+      if (verbose && issue.field) {
+        console.log(chalk.dim(`      field: ${issue.field}`));
       }
     }
     console.log("");

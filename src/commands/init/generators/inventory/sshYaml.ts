@@ -33,7 +33,7 @@ export function generateSshKeyPair(sshDir: string, dcName: string, userName: str
   try {
     execSync(
       `ssh-keygen -t ed25519 -f "${privateKeyPath}" -N "" -C "soverstack_${userName}@${dcName}"`,
-      { stdio: "pipe" }
+      { stdio: "pipe" },
     );
     return true;
   } catch {
@@ -41,7 +41,7 @@ export function generateSshKeyPair(sshDir: string, dcName: string, userName: str
     try {
       execSync(
         `ssh-keygen -t rsa -b 4096 -f "${privateKeyPath}" -N "" -C "soverstack_${userName}@${dcName}"`,
-        { stdio: "pipe" }
+        { stdio: "pipe" },
       );
       return true;
     } catch {
@@ -75,7 +75,7 @@ export function generateSshYaml({ ctx, region, datacenter }: SshYamlOptions): vo
     "inventory",
     region.name,
     "datacenters",
-    datacenter.fullName
+    datacenter.fullName,
   );
   const filePath = path.join(dcDir, "ssh.yaml");
 
@@ -91,11 +91,22 @@ export function generateSshYaml({ ctx, region, datacenter }: SshYamlOptions): vo
 # SSH access configuration.
 # Keys are stored in .ssh/ (paths relative to platform.yaml)
 #
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  WARNING: NEVER edit SSH key files manually.                            │
+# │                                                                        │
+# │  Always use:  soverstack generate ssh                                  │
+# │                                                                        │
+# │  This command safely backs up the current keys before generating new   │
+# │  ones. If you modify or replace key files directly, Soverstack will    │
+# │  not be able to connect to your servers to deploy the new keys,        │
+# │  and you WILL be locked out.                                           │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
 # SECURITY:
-# - Minimum 2 sudo-enabled users required
-# - SSH key rotation is ENFORCED
+# - Minimum 2 sudo-enabled users required (for safe key rotation)
+# - SSH key rotation is ENFORCED based on rotation_policy
 # - knockd is REQUIRED - SSH port is closed by default
-# - NEVER store raw private keys in this repository
+# - NEVER commit .ssh/ to git
 #
 # ==============================================================================
 
@@ -185,7 +196,7 @@ export function checkExistingSshKeys(sshDir: string, datacenterNames: string[]):
  */
 export function generateSshKeys(
   ctx: GeneratorContext,
-  datacenters: { region: RegionConfig; dc: DatacenterConfig }[]
+  datacenters: { region: RegionConfig; dc: DatacenterConfig }[],
 ): void {
   const { projectPath, options } = ctx;
   const sshDir = path.join(projectPath, ".ssh");
@@ -200,8 +211,5 @@ export function generateSshKeys(
         generateSshKeyPair(sshDir, dc.fullName, user.name);
       }
     }
-  } else {
-    // Just create .gitkeep
-    fs.writeFileSync(path.join(sshDir, ".gitkeep"), "");
   }
 }

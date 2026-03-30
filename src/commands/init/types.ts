@@ -1,5 +1,5 @@
 /**
- * Soverstack Init V2 - Types
+ * Soverstack Init - Types
  *
  * New structure: inventory/ + workloads/
  */
@@ -592,7 +592,7 @@ export function vmId(
   regionId: number,
   dcId: number,
   role: string,
-  instance: number
+  instance: number,
 ): number {
   const offset = ROLE_OFFSETS[role as keyof typeof ROLE_OFFSETS] ?? 0;
 

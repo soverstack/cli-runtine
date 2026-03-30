@@ -27,10 +27,22 @@ export const initCommand = new Command("init")
     try {
       // Header
       console.log("");
-      console.log(chalk.cyan.bold("  ╔═══════════════════════════════════════════════════════════════════╗"));
-      console.log(chalk.cyan.bold("  ║") + chalk.white.bold("                    SOVERSTACK INIT V2                            ") + chalk.cyan.bold("║"));
-      console.log(chalk.cyan.bold("  ║") + chalk.gray("              inventory/ + workloads/ structure                  ") + chalk.cyan.bold("║"));
-      console.log(chalk.cyan.bold("  ╚═══════════════════════════════════════════════════════════════════╝"));
+      console.log(
+        chalk.cyan.bold("  ╔═══════════════════════════════════════════════════════════════════╗"),
+      );
+      console.log(
+        chalk.cyan.bold("  ║") +
+          chalk.white.bold("                    SOVERSTACK INIT                               ") +
+          chalk.cyan.bold("║"),
+      );
+      console.log(
+        chalk.cyan.bold("  ║") +
+          chalk.gray("              inventory/ + workloads/ structure                  ") +
+          chalk.cyan.bold("║"),
+      );
+      console.log(
+        chalk.cyan.bold("  ╚═══════════════════════════════════════════════════════════════════╝"),
+      );
       console.log("");
 
       // Non-interactive mode
@@ -66,7 +78,9 @@ function parseRegionsFlag(regionsStr: string): RegionConfig[] {
 }
 
 function buildOptionsFromFlags(projectName: string | undefined, flags: any): InitOptions {
-  const regions = flags.regions ? parseRegionsFlag(flags.regions) : [{ name: "eu", zones: ["main"] }];
+  const regions = flags.regions
+    ? parseRegionsFlag(flags.regions)
+    : [{ name: "eu", zones: ["main"] }];
   const tier = (flags.tier as InfrastructureTierType) || "production";
 
   return {
@@ -84,7 +98,7 @@ function buildOptionsFromFlags(projectName: string | undefined, flags: any): Ini
 
 async function collectOptionsInteractively(
   projectName: string | undefined,
-  flags: any
+  flags: any,
 ): Promise<InitOptions> {
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 1: Basic info
@@ -146,14 +160,38 @@ async function collectOptionsInteractively(
   // PHASE 2: Regions (comma-separated)
   // ═══════════════════════════════════════════════════════════════════════════
   console.log("");
-  console.log(chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"));
-  console.log(chalk.gray("  │  ") + chalk.cyan.bold("STEP 1: REGIONS") + chalk.gray("                                                    │"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  Geographic areas (eu, us, asia,eu-west,eu-east).                   │"));
-  console.log(chalk.gray("  │  Each region gets:                                                  │"));
-  console.log(chalk.gray("  │  - ") + chalk.white("hub") + chalk.gray(" (backup/storage) - auto-created") + (phase1.tier === "local" ? chalk.yellow(" [disabled in local]") : "") + chalk.gray(phase1.tier === "local" ? "          │":"                              │"));
-  console.log(chalk.gray("  │  - ") + chalk.white("zones") + chalk.gray(" (production compute)                                       │"));
-  console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
+  console.log(
+    chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.cyan.bold("STEP 1: REGIONS") +
+      chalk.gray("                                                    │"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  Geographic areas (eu, us, asia,eu-west,eu-east).                   │"),
+  );
+  console.log(
+    chalk.gray("  │  Each region gets:                                                  │"),
+  );
+  console.log(
+    chalk.gray("  │  - ") +
+      chalk.white("hub") +
+      chalk.gray(" (backup/storage) - auto-created") +
+      (phase1.tier === "local" ? chalk.yellow(" [disabled in local]") : "") +
+      chalk.gray(phase1.tier === "local" ? "          │" : "                              │"),
+  );
+  console.log(
+    chalk.gray("  │  - ") +
+      chalk.white("zones") +
+      chalk.gray(" (production compute)                                       │"),
+  );
+  console.log(
+    chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"),
+  );
   console.log("");
 
   const { regionNames } = await inquirer.prompt([
@@ -181,11 +219,23 @@ async function collectOptionsInteractively(
   // PHASE 3: Zones for each region
   // ═══════════════════════════════════════════════════════════════════════════
   console.log("");
-  console.log(chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"));
-  console.log(chalk.gray("  │  ") + chalk.cyan.bold("STEP 2: ZONES") + chalk.gray("                                                      │"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  Production datacenters for each region (NVMe + Ceph).              │"));
-  console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
+  console.log(
+    chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.cyan.bold("STEP 2: ZONES") +
+      chalk.gray("                                                      │"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  Production datacenters for each region (NVMe + Ceph).              │"),
+  );
+  console.log(
+    chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"),
+  );
   console.log("");
 
   const isLocal = phase1.tier === "local";
@@ -268,15 +318,39 @@ async function collectOptionsInteractively(
   // PHASE 4: SSH Key Generation
   // ═══════════════════════════════════════════════════════════════════════════
   console.log("");
-  console.log(chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"));
-  console.log(chalk.gray("  │  ") + chalk.cyan.bold("SSH KEYS") + chalk.gray("                                                           │"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  Soverstack needs SSH keys to access your servers.                  │"));
-  console.log(chalk.gray("  │  One key pair per datacenter per user (admin + backup).             │"));
-  console.log(chalk.gray("  │                                                                     │"));
-  console.log(chalk.gray("  │  ") + chalk.yellow("If you skip, generate keys later with:") + chalk.gray("                           │"));
-  console.log(chalk.gray("  │  ") + chalk.cyan("soverstack generate:ssh-keys") + chalk.gray("                                       │"));
-  console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
+  console.log(
+    chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.cyan.bold("SSH KEYS") +
+      chalk.gray("                                                           │"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  Soverstack needs SSH keys to access your servers.                  │"),
+  );
+  console.log(
+    chalk.gray("  │  One key pair per datacenter per user (admin + backup).             │"),
+  );
+  console.log(
+    chalk.gray("  │                                                                     │"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.yellow("If you skip, generate keys later with:") +
+      chalk.gray("                           │"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.cyan("soverstack generate:ssh-keys") +
+      chalk.gray("                                       │"),
+  );
+  console.log(
+    chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"),
+  );
   console.log("");
 
   const { generateKeys } = await inquirer.prompt([
@@ -298,11 +372,23 @@ async function collectOptionsInteractively(
   // PHASE 5: Control plane selection
   // ═══════════════════════════════════════════════════════════════════════════
   console.log("");
-  console.log(chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"));
-  console.log(chalk.gray("  │  ") + chalk.cyan.bold("STEP 3: CONTROL PLANE") + chalk.gray("                                              │"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  Where global services run: Vault, Keycloak, PostgreSQL, Headscale  │"));
-  console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
+  console.log(
+    chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.cyan.bold("STEP 3: CONTROL PLANE") +
+      chalk.gray("                                              │"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  Where global services run: Vault, Keycloak, PostgreSQL, Headscale  │"),
+  );
+  console.log(
+    chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"),
+  );
   console.log("");
 
   // Build list of all zones
@@ -342,16 +428,46 @@ async function collectOptionsInteractively(
   const finalTier = flags.tier || phase1.tier;
 
   console.log("");
-  console.log(chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"));
-  console.log(chalk.gray("  │  ") + chalk.green.bold("SUMMARY") + chalk.gray("                                                            │"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  Project:      ") + chalk.white(finalProjectName.padEnd(51)) + chalk.gray("│"));
-  console.log(chalk.gray("  │  Domain:       ") + chalk.white(finalDomain.padEnd(51)) + chalk.gray("│"));
-  console.log(chalk.gray("  │  Tier:         ") + chalk.white(finalTier.padEnd(51)) + chalk.gray("│"));
-  console.log(chalk.gray("  │  Control:      ") + chalk.cyan(`${primaryRegion}/zone-${primaryZone}`.padEnd(51)) + chalk.gray("│"));
-  console.log(chalk.gray("  │  SSH Keys:     ") + (phase1.generateSshKeys ? chalk.green("Generate".padEnd(51)) : chalk.yellow("Manual".padEnd(51))) + chalk.gray("│"));
-  console.log(chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"));
-  console.log(chalk.gray("  │  ") + chalk.white.bold("Datacenters:") + chalk.gray("                                                       │"));
+  console.log(
+    chalk.gray("  ┌─────────────────────────────────────────────────────────────────────┐"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.green.bold("SUMMARY") +
+      chalk.gray("                                                            │"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  Project:      ") + chalk.white(finalProjectName.padEnd(51)) + chalk.gray("│"),
+  );
+  console.log(
+    chalk.gray("  │  Domain:       ") + chalk.white(finalDomain.padEnd(51)) + chalk.gray("│"),
+  );
+  console.log(
+    chalk.gray("  │  Tier:         ") + chalk.white(finalTier.padEnd(51)) + chalk.gray("│"),
+  );
+  console.log(
+    chalk.gray("  │  Control:      ") +
+      chalk.cyan(`${primaryRegion}/zone-${primaryZone}`.padEnd(51)) +
+      chalk.gray("│"),
+  );
+  console.log(
+    chalk.gray("  │  SSH Keys:     ") +
+      (phase1.generateSshKeys
+        ? chalk.green("Generate".padEnd(51))
+        : chalk.yellow("Manual".padEnd(51))) +
+      chalk.gray("│"),
+  );
+  console.log(
+    chalk.gray("  ├─────────────────────────────────────────────────────────────────────┤"),
+  );
+  console.log(
+    chalk.gray("  │  ") +
+      chalk.white.bold("Datacenters:") +
+      chalk.gray("                                                       │"),
+  );
   regions.forEach((r) => {
     // Region header
     console.log(chalk.gray("  │  ") + chalk.white(`  ${r.name}:`.padEnd(53)) + chalk.gray("│"));
@@ -372,13 +488,23 @@ async function collectOptionsInteractively(
     r.zones.forEach((z) => {
       const isControl = r.name === primaryRegion && z === primaryZone;
       const zoneLine = `    zone-${z}${isControl ? " (control plane)" : ""}`.padEnd(53);
-      console.log(chalk.gray("  │  ") + (isControl ? chalk.cyan(zoneLine) : chalk.white(zoneLine)) + chalk.gray("│"));
+      console.log(
+        chalk.gray("  │  ") +
+          (isControl ? chalk.cyan(zoneLine) : chalk.white(zoneLine)) +
+          chalk.gray("│"),
+      );
     });
   });
   if (isLocal) {
-    console.log(chalk.gray("  │  ") + chalk.yellow("    (hubs disabled in local tier)".padEnd(53)) + chalk.gray("│"));
+    console.log(
+      chalk.gray("  │  ") +
+        chalk.yellow("    (hubs disabled in local tier)".padEnd(53)) +
+        chalk.gray("│"),
+    );
   }
-  console.log(chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"));
+  console.log(
+    chalk.gray("  └─────────────────────────────────────────────────────────────────────┘"),
+  );
   console.log("");
 
   // Confirm

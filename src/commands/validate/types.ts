@@ -1,5 +1,5 @@
 /**
- * Soverstack Validate V2 - Types
+ * Soverstack Validate - Types
  */
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -250,13 +250,7 @@ export interface DiscoveredTopology {
 // Validation: check that vm_id falls within the expected scope range
 // and is globally unique.
 
-export {
-  GLOBAL_BASE,
-  REGION_BLOCK,
-  DC_BLOCK,
-  ROLE_OFFSETS,
-  vmId,
-} from "../../commands/init/types";
+export { GLOBAL_BASE, REGION_BLOCK, DC_BLOCK, ROLE_OFFSETS, vmId } from "../../commands/init/types";
 
 /** Validate that a vm_id is in the correct scope range */
 export function isVmIdInScope(id: number, scope: string): boolean {
