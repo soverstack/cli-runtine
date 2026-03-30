@@ -1,9 +1,0 @@
-{
-  "name": "Debug ts-node validate",
-  "type": "node",
-  "request": "launch",
-  "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/ts-node",
-  "args": ["src/index.ts", "validate", "platform.yaml"],
-  "cwd": "${workspaceFolder}/cli/runtime-nodejs/a",
-  "skipFiles": ["<node_internals>/**"]
-}
