@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, versionLine, vmId } from "../../../types";
+import { GeneratorContext, implLine, versionLine, vmId } from "../../../types";
 
 export function generateDnsYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -30,7 +30,7 @@ services:
   # ============================================================================
   - role: dns-authoritative
     scope: global
-    implementation: powerdns      # powerdns | bind | knot
+${implLine("dns-authoritative")}
 ${versionLine("powerdns")}
     instances:
       - name: dns-01
@@ -59,7 +59,7 @@ ${!isLocal ? `
   # ============================================================================
   - role: dns-loadbalancer
     scope: global
-    implementation: dnsdist       # dnsdist | haproxy
+${implLine("dns-loadbalancer")}
 ${versionLine("dnsdist")}
     instances:
       - name: dns-lb-01

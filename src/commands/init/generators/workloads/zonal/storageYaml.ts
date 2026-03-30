@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface StorageYamlOptions {
   ctx: GeneratorContext;
@@ -47,7 +47,7 @@ services:
     scope: zonal
     region: ${region.name}
     datacenter: ${datacenter.fullName}
-    implementation: minio         # minio | ceph-rgw | seaweedfs
+${implLine("storage")}
 ${versionLine("minio")}
     instances:
       - name: storage-${region.name}-01

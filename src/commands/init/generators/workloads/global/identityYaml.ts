@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, versionLine, vmId } from "../../../types";
+import { GeneratorContext, implLine, versionLine, vmId } from "../../../types";
 
 export function generateIdentityYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -30,7 +30,7 @@ services:
   # ============================================================================
   - role: identity
     scope: global
-    implementation: keycloak      # keycloak | authentik | zitadel
+${implLine("identity")}
 ${versionLine("keycloak")}
     instances:
       - name: identity-01

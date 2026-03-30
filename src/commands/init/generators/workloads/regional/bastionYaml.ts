@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface BastionYamlOptions {
   ctx: GeneratorContext;
@@ -38,7 +38,7 @@ services:
   - role: bastion
     scope: regional
     region: ${region.name}
-    implementation: teleport      # teleport | boundary | guacamole
+${implLine("bastion")}
 ${versionLine("teleport")}
     instances:
       - name: bastion-${region.name}-01

@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface MonitoringYamlOptions {
   ctx: GeneratorContext;
@@ -41,7 +41,7 @@ services:
   - role: metrics
     scope: regional
     region: ${region.name}
-    implementation: victoriametrics  # victoriametrics | prometheus | mimir
+${implLine("metrics")}
 ${versionLine("victoriametrics")}
     instances:
       - name: metrics-${region.name}-01
@@ -74,7 +74,7 @@ ${
   - role: logs
     scope: regional
     region: ${region.name}
-    implementation: loki          # loki | elasticsearch | graylog
+${implLine("logs")}
 ${versionLine("loki")}
     instances:
       - name: logs-${region.name}-01
@@ -100,7 +100,7 @@ ${versionLine("loki")}
   - role: alerting
     scope: regional
     region: ${region.name}
-    implementation: alertmanager  # alertmanager | grafana-alerting
+${implLine("alerting")}
 ${versionLine("alertmanager")}
     instances:
       - name: alerting-${region.name}-01
@@ -129,7 +129,7 @@ ${versionLine("alertmanager")}
   - role: dashboards
     scope: regional
     region: ${region.name}
-    implementation: grafana       # grafana | kibana
+${implLine("dashboards")}
 ${versionLine("grafana")}
     instances:
       - name: dashboards-01

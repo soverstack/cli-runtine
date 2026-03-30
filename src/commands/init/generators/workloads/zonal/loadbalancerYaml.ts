@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface LoadbalancerYamlOptions {
   ctx: GeneratorContext;
@@ -47,7 +47,7 @@ services:
     scope: zonal
     region: ${region.name}
     datacenter: ${datacenter.fullName}
-    implementation: haproxy       # haproxy | nginx | traefik
+${implLine("loadbalancer")}
 ${versionLine("haproxy")}
     instances:
       - name: lb-${region.name}-${datacenter.name}-01

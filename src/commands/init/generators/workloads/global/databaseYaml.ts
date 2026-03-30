@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, versionLine, vmId } from "../../../types";
+import { GeneratorContext, implLine, versionLine, vmId } from "../../../types";
 
 export function generateDatabaseYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -47,7 +47,7 @@ services:
   # ============================================================================
   - role: database
     scope: global
-    implementation: postgresql    # postgresql | mysql | mariadb
+${implLine("database")}
 ${versionLine("postgresql")}
     instances:
 ${instances}

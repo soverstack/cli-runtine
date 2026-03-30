@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface SiemYamlOptions {
   ctx: GeneratorContext;
@@ -43,7 +43,7 @@ services:
   - role: siem
     scope: regional
     region: ${region.name}
-    implementation: wazuh         # wazuh | elastic-siem | splunk
+${implLine("siem")}
 ${versionLine("wazuh")}
     instances:
       - name: siem-${region.name}-01

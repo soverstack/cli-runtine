@@ -325,25 +325,8 @@ export const VALID_ROLES: Record<string, string[]> = {
   zonal: ["firewall", "loadbalancer", "storage", "backup"],
 };
 
-/** Valid implementations per role (from ImplementationMap type) */
-export const VALID_IMPLEMENTATIONS: Record<string, string[]> = {
-  database: ["postgresql", "mysql", "mariadb"],
-  secrets: ["vault", "infisical", "openbao"],
-  identity: ["keycloak", "authentik", "zitadel"],
-  "dns-authoritative": ["powerdns", "bind", "knot"],
-  "dns-loadbalancer": ["dnsdist", "haproxy"],
-  metrics: ["prometheus", "victoriametrics", "mimir"],
-  logs: ["loki", "elasticsearch", "graylog"],
-  alerting: ["alertmanager", "grafana-alerting"],
-  dashboards: ["grafana", "kibana"],
-  bastion: ["teleport", "boundary", "guacamole"],
-  siem: ["wazuh", "elastic-siem", "splunk"],
-  firewall: ["vyos", "opnsense", "pfsense"],
-  loadbalancer: ["haproxy", "nginx", "traefik"],
-  storage: ["minio", "ceph-rgw", "seaweedfs"],
-  backup: ["pbs", "restic", "borg"],
-  mesh: ["headscale", "netbird"],
-};
+/** Valid implementations per role (from init/types.ts — single source of truth) */
+export { IMPLEMENTATIONS as VALID_IMPLEMENTATIONS } from "../../commands/init/types";
 
 /** Roles where zone workloads are valid vs hub workloads */
 export const ZONE_ROLES = ["firewall", "loadbalancer"];

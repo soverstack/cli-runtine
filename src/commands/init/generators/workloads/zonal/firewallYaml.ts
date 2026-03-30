@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface FirewallYamlOptions {
   ctx: GeneratorContext;
@@ -41,7 +41,7 @@ services:
     scope: zonal
     region: ${region.name}
     datacenter: ${datacenter.fullName}
-    implementation: vyos          # vyos | opnsense | pfsense
+${implLine("firewall")}
 ${versionLine("vyos")}
     instances:
       - name: fw-${region.name}-${datacenter.name}-01

@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, RegionConfig, DatacenterConfig, versionLine, vmId } from "../../../types";
+import { GeneratorContext, RegionConfig, DatacenterConfig, implLine, versionLine, vmId } from "../../../types";
 
 interface BackupYamlOptions {
   ctx: GeneratorContext;
@@ -40,7 +40,7 @@ services:
     scope: zonal
     region: ${region.name}
     datacenter: ${datacenter.fullName}
-    implementation: pbs           # pbs | restic | borg
+${implLine("backup")}
 ${versionLine("pbs")}
     instances:
       - name: backup-${region.name}-01

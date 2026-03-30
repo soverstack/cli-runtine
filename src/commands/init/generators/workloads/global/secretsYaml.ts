@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GeneratorContext, versionLine, vmId } from "../../../types";
+import { GeneratorContext, implLine, versionLine, vmId } from "../../../types";
 
 export function generateSecretsYaml(ctx: GeneratorContext): void {
   const { projectPath, options } = ctx;
@@ -43,7 +43,7 @@ services:
   # ============================================================================
   - role: secrets
     scope: global
-    implementation: openbao        # openbao | vault | infisical
+${implLine("secrets")}
 ${versionLine("openbao")}
     instances:
 ${instances}

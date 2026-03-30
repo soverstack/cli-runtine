@@ -339,6 +339,7 @@ export type ImplementationMap = {
   identity: "keycloak" | "authentik" | "zitadel";
   "dns-authoritative": "powerdns" | "bind" | "knot";
   "dns-loadbalancer": "dnsdist" | "haproxy";
+  mesh: "headscale" | "netbird";
   // Regional
   metrics: "prometheus" | "victoriametrics" | "mimir";
   logs: "loki" | "elasticsearch" | "graylog";
@@ -352,6 +353,62 @@ export type ImplementationMap = {
   storage: "minio" | "ceph-rgw" | "seaweedfs";
   backup: "pbs" | "restic" | "borg";
 };
+
+/**
+ * Runtime map: all implementations per role (used by generators and validators)
+ */
+export const IMPLEMENTATIONS: Record<string, string[]> = {
+  database: ["postgresql", "mysql", "mariadb"],
+  secrets: ["vault", "infisical", "openbao"],
+  identity: ["keycloak", "authentik", "zitadel"],
+  "dns-authoritative": ["powerdns", "bind", "knot"],
+  "dns-loadbalancer": ["dnsdist", "haproxy"],
+  mesh: ["headscale", "netbird"],
+  metrics: ["prometheus", "victoriametrics", "mimir"],
+  logs: ["loki", "elasticsearch", "graylog"],
+  alerting: ["alertmanager", "grafana-alerting"],
+  dashboards: ["grafana", "kibana"],
+  bastion: ["teleport", "boundary", "guacamole"],
+  siem: ["wazuh", "elastic-siem", "splunk"],
+  firewall: ["vyos", "opnsense", "pfsense"],
+  loadbalancer: ["haproxy", "nginx", "traefik"],
+  storage: ["minio", "ceph-rgw", "seaweedfs"],
+  backup: ["pbs", "restic", "borg"],
+};
+
+/**
+ * Default implementation per role (first in the list = recommended)
+ */
+export const DEFAULT_IMPLEMENTATIONS: Record<string, string> = {
+  database: "postgresql",
+  secrets: "openbao",
+  identity: "keycloak",
+  "dns-authoritative": "powerdns",
+  "dns-loadbalancer": "dnsdist",
+  mesh: "headscale",
+  metrics: "prometheus",
+  logs: "loki",
+  alerting: "alertmanager",
+  dashboards: "grafana",
+  bastion: "teleport",
+  siem: "wazuh",
+  firewall: "vyos",
+  loadbalancer: "haproxy",
+  storage: "minio",
+  backup: "pbs",
+};
+
+/**
+ * Generate YAML implementation line with alternatives as comment
+ * Example: implementation: postgresql    # postgresql | mysql | mariadb
+ */
+export function implLine(role: string, indent: number = 4): string {
+  const impl = DEFAULT_IMPLEMENTATIONS[role] || "unknown";
+  const all = IMPLEMENTATIONS[role] || [impl];
+  const pad = " ".repeat(indent);
+  const alternatives = all.join(" | ");
+  return `${pad}implementation: ${impl}${" ".repeat(Math.max(1, 14 - impl.length))}# ${alternatives}`;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // SERVICE INSTANCE
