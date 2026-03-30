@@ -83,9 +83,7 @@ export function scanProject(projectPath: string): ScannedProject {
     const fullPath = path.join(inventoryPath, f);
     const stat = fs.statSync(fullPath);
     return (
-      stat.isDirectory() &&
-      !f.startsWith(".") &&
-      fs.existsSync(path.join(fullPath, "region.yaml"))
+      stat.isDirectory() && !f.startsWith(".") && fs.existsSync(path.join(fullPath, "region.yaml"))
     );
   });
 
@@ -111,32 +109,33 @@ export function scanProject(projectPath: string): ScannedProject {
     const hubs: ScannedDatacenter[] = [];
     const zones: ScannedDatacenter[] = [];
 
-    // Follow datacenter paths from region.yaml
-    if (regionYaml.datacenters && Array.isArray(regionYaml.datacenters)) {
-      for (const dcEntry of regionYaml.datacenters) {
-        // Resolve relative path from region folder
-        const dcPath = path.resolve(regionPath, dcEntry.path);
+    // Discover datacenters from filesystem (hub-* and zone-* directories)
+    const dcBasePath = path.join(regionPath, "datacenters");
+    if (fs.existsSync(dcBasePath)) {
+      const dcFolders = fs.readdirSync(dcBasePath).filter((f) => {
+        const fullPath = path.join(dcBasePath, f);
+        return fs.statSync(fullPath).isDirectory() && (f.startsWith("hub-") || f.startsWith("zone-"));
+      });
 
-        // Check if datacenter folder exists and has required files
-        if (!fs.existsSync(dcPath) || !fs.existsSync(path.join(dcPath, "nodes.yaml"))) {
-          continue;
-        }
+      for (const dcFolderName of dcFolders) {
+        const dcPath = path.join(dcBasePath, dcFolderName);
+        const dcType = dcFolderName.startsWith("hub-") ? "hub" : "zone";
 
         const dc: ScannedDatacenter = {
-          name: dcEntry.name.startsWith("hub-")
-            ? dcEntry.name.replace("hub-", "")
-            : dcEntry.name.replace("zone-", ""),
-          fullName: dcEntry.name,
-          type: dcEntry.type,
-          description: dcEntry.description || "",
-          control_plane: dcEntry.control_plane,
+          name: dcFolderName.startsWith("hub-")
+            ? dcFolderName.replace("hub-", "")
+            : dcFolderName.replace("zone-", ""),
+          fullName: dcFolderName,
+          type: dcType as "hub" | "zone",
+          description: "",
+          control_plane: false,
           path: dcPath,
         };
 
         datacenters.push(dc);
         allDatacenters.push(dc);
 
-        if (dcEntry.type === "hub") {
+        if (dcType === "hub") {
           hubs.push(dc);
         } else {
           zones.push(dc);
@@ -171,11 +170,7 @@ export function regionExists(projectPath: string, regionName: string): boolean {
 /**
  * Check if a datacenter exists in a region
  */
-export function datacenterExists(
-  projectPath: string,
-  regionName: string,
-  dcName: string
-): boolean {
+export function datacenterExists(projectPath: string, regionName: string, dcName: string): boolean {
   const dcPath = path.join(projectPath, "inventory", regionName, "datacenters", dcName);
   return fs.existsSync(dcPath);
 }

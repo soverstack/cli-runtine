@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "ssh": "ts-node src/index.ts -- generate:ssh-keys ",
+    "ssh": "npx ts-node ../src/index.ts generate ssh --dc eu:zone-paris",
     "init": "ts-node src/index.ts -- init ",
     "add": "ts-node src/index.ts -- add ",
     "val": "ts-node src/index.ts -- validate test",

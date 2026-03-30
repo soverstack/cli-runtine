@@ -8,7 +8,6 @@ import { initCommand } from './commands/init';
 import { validateCommand } from './commands/validate';
 import { planCommand } from './commands/plan';
 import { applyCommand } from './commands/apply';
-import { generateSshKeysCommand } from './commands/generate-ssh';
 import { addCommand } from './commands/add';
 import { generateCommand } from './commands/generate';
 
@@ -25,7 +24,6 @@ program.addCommand(initCommand);
 program.addCommand(validateCommand);
 program.addCommand(planCommand);
 program.addCommand(applyCommand);
-program.addCommand(generateSshKeysCommand);
 program.addCommand(addCommand);
 program.addCommand(generateCommand);
 

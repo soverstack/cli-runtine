@@ -24,11 +24,7 @@ import {
   ScannedRegion,
 } from "../add/utils/scanner";
 
-import {
-  generateSshKeyPair,
-  checkExistingSshKeys,
-  SSH_USERS,
-} from "../init/generators";
+import { generateSshKeyPair, checkExistingSshKeys, SSH_USERS } from "../init/generators";
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMMAND
@@ -39,8 +35,7 @@ export const generateSshCommand = new Command("ssh")
   .option("--all", "Generate for all datacenters")
   .option("--region <region>", "Generate for all datacenters in a region")
   .option("--dc <region:dc>", "Generate for a specific datacenter (format: region:datacenter)")
-  .option("-f, --force", "Overwrite existing keys", false)
-  .action(async (options: { all?: boolean; region?: string; dc?: string; force: boolean }) => {
+  .action(async (options: { all?: boolean; region?: string; dc?: string }) => {
     try {
       console.log("");
       console.log(chalk.cyan.bold("  SSH KEY GENERATION"));
@@ -104,7 +99,9 @@ export const generateSshCommand = new Command("ssh")
         }
         const dc = region.datacenters.find((d) => d.fullName === dcName);
         if (!dc) {
-          console.log(chalk.red(`  Error: Datacenter '${dcName}' not found in region '${regionName}'.`));
+          console.log(
+            chalk.red(`  Error: Datacenter '${dcName}' not found in region '${regionName}'.`),
+          );
           console.log(chalk.gray("  Available datacenters:"));
           region.datacenters.forEach((d) => {
             console.log(chalk.gray(`    • ${d.fullName}`));
@@ -123,7 +120,9 @@ export const generateSshCommand = new Command("ssh")
       }
 
       // Show what will be generated
-      console.log(chalk.white(`  Generating SSH keys for ${targetDatacenters.length} datacenter(s):`));
+      console.log(
+        chalk.white(`  Generating SSH keys for ${targetDatacenters.length} datacenter(s):`),
+      );
       targetDatacenters.forEach(({ region, dc }) => {
         console.log(chalk.gray(`    • ${region}/${dc.fullName}`));
       });
@@ -134,17 +133,27 @@ export const generateSshCommand = new Command("ssh")
       const existingKeys = checkExistingSshKeys(sshDir, dcNames);
       const isRotation = existingKeys.length > 0;
 
-      if (isRotation && !options.force) {
+      if (isRotation) {
         console.log(chalk.yellow("  Existing keys found (will be backed up to .ssh/.previous/):"));
         existingKeys.forEach((key) => {
           console.log(chalk.gray(`    - .ssh/${key}`));
         });
         console.log("");
-        console.log(chalk.yellow("  ┌──────────────────────────────────────────────────────────────┐"));
-        console.log(chalk.yellow("  │  The current keys will be moved to .ssh/.previous/          │"));
-        console.log(chalk.yellow("  │  DO NOT delete .ssh/.previous/ until the next apply         │"));
-        console.log(chalk.yellow("  │  succeeds — it is needed to connect and deploy new keys.    │"));
-        console.log(chalk.yellow("  └──────────────────────────────────────────────────────────────┘"));
+        console.log(
+          chalk.yellow("  ┌──────────────────────────────────────────────────────────────┐"),
+        );
+        console.log(
+          chalk.yellow("  │  The current keys will be moved to .ssh/.previous/          │"),
+        );
+        console.log(
+          chalk.yellow("  │  DO NOT delete .ssh/.previous/ until the next apply         │"),
+        );
+        console.log(
+          chalk.yellow("  │  succeeds — it is needed to connect and deploy new keys.    │"),
+        );
+        console.log(
+          chalk.yellow("  └──────────────────────────────────────────────────────────────┘"),
+        );
         console.log("");
 
         const { confirm } = await inquirer.prompt([
@@ -170,13 +179,33 @@ export const generateSshCommand = new Command("ssh")
       // Backup existing keys to .previous/ if rotating
       if (isRotation) {
         const previousDir = path.join(sshDir, ".previous");
-
-        // Clean old .previous/ if exists
-        if (fs.existsSync(previousDir)) {
-          fs.rmSync(previousDir, { recursive: true });
-        }
         fs.mkdirSync(previousDir, { recursive: true });
 
+        // Check if any of these DCs already have keys in .previous/ (rotation not yet applied)
+        const alreadyInPrevious: string[] = [];
+        for (const keyName of existingKeys) {
+          if (fs.existsSync(path.join(previousDir, keyName))) {
+            alreadyInPrevious.push(keyName);
+          }
+        }
+
+        if (alreadyInPrevious.length > 0) {
+          console.log(
+            chalk.red("  These keys are already in .ssh/.previous/ from a previous rotation:"),
+          );
+          alreadyInPrevious.forEach((key) => {
+            console.log(chalk.red(`    - .ssh/.previous/${key}`));
+          });
+          console.log("");
+          console.log(
+            chalk.yellow("  You must run 'soverstack apply' first to deploy the pending rotation"),
+          );
+          console.log(chalk.yellow("  before generating new keys for the same datacenter."));
+          console.log("");
+          process.exit(1);
+        }
+
+        // Copy keys to .previous/ (additive — does not remove other DC keys)
         let backedUp = 0;
         for (const keyName of existingKeys) {
           const srcPrivate = path.join(sshDir, keyName);
@@ -231,7 +260,10 @@ export const generateSshCommand = new Command("ssh")
       if (isRotation) {
         console.log("");
         console.log(chalk.white("  Next step:"));
-        console.log(chalk.cyan("    soverstack apply") + chalk.gray(" — will rotate keys on servers using .ssh/.previous/"));
+        console.log(
+          chalk.cyan("    soverstack apply") +
+            chalk.gray(" — will rotate keys on servers using .ssh/.previous/"),
+        );
         console.log("");
         console.log(chalk.yellow("  Do NOT delete .ssh/.previous/ until apply succeeds."));
       } else {
@@ -254,7 +286,7 @@ export const generateSshCommand = new Command("ssh")
 // ════════════════════════════════════════════════════════════════════════════
 
 async function selectDatacentersInteractively(
-  regions: ScannedRegion[]
+  regions: ScannedRegion[],
 ): Promise<{ region: string; dc: ScannedDatacenter }[]> {
   // Count total datacenters
   const totalDcs = regions.reduce((sum, r) => sum + r.datacenters.length, 0);
@@ -334,15 +366,3 @@ async function selectDatacentersInteractively(
 
   return result;
 }
-
-// Keep old command name for backward compatibility
-export const generateSshKeysCommand = new Command("generate:ssh-keys")
-  .description("Generate SSH keys (deprecated, use 'generate ssh')")
-  .argument("[platform-file]", "Path to platform.yaml", "platform.yaml")
-  .option("-f, --force", "Overwrite existing keys", false)
-  .action(async () => {
-    console.log(chalk.yellow("\n  Note: 'generate:ssh-keys' is deprecated."));
-    console.log(chalk.yellow("  Use 'soverstack generate ssh' instead.\n"));
-    // Forward to new command with --all
-    await generateSshCommand.parseAsync(["--all"], { from: "user" });
-  });

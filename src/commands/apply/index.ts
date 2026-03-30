@@ -148,6 +148,8 @@ export const applyCommand = new Command("apply")
         if (toRotate.length > 0) {
           log.info(`${toRotate.length} node(s) need SSH key rotation`);
           log.blank();
+          const rotatedDcs = new Set<string>();
+
           for (const action of toRotate) {
             const node = desiredNodes.find((n) => n.name === action.node);
             if (node) {
@@ -159,8 +161,12 @@ export const applyCommand = new Command("apply")
               }
               log.taskOk(action.node, `SSH keys rotated (${action.sshRotation?.length || 0} user(s))`);
               markNodeBootstrapped(state, action.node, action.address, action.region, action.datacenter, action.role, hashNode(node));
+              rotatedDcs.add(action.datacenter);
             }
           }
+
+          // Clean up .previous/ for successfully rotated DCs
+          cleanPreviousKeys(absPath, rotatedDcs);
         }
 
         const noopNodes = nodeActions.filter((a) => a.type === "noop");
@@ -371,4 +377,34 @@ function readDesiredNodes(projectPath: string): DesiredNode[] {
   }
 
   return nodes;
+}
+
+/**
+ * Clean up .ssh/.previous/ for DCs whose rotation succeeded.
+ * Only removes keys for the specified DCs, leaving others untouched.
+ * Removes the .previous/ directory if it becomes empty.
+ */
+function cleanPreviousKeys(projectPath: string, rotatedDcs: Set<string>): void {
+  const previousDir = path.join(projectPath, ".ssh", ".previous");
+  if (!fs.existsSync(previousDir)) return;
+
+  let cleaned = 0;
+  for (const dcName of rotatedDcs) {
+    const files = fs.readdirSync(previousDir).filter((f) => f.startsWith(dcName + "_"));
+    for (const file of files) {
+      fs.unlinkSync(path.join(previousDir, file));
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    log.debug(`Cleaned ${cleaned} previous key file(s) from .ssh/.previous/`);
+  }
+
+  // Remove .previous/ if empty
+  const remaining = fs.readdirSync(previousDir);
+  if (remaining.length === 0) {
+    fs.rmdirSync(previousDir);
+    log.debug("Removed empty .ssh/.previous/ directory");
+  }
 }
