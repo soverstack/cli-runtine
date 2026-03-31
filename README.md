@@ -1,557 +1,212 @@
-# Soverstack Runtime - Node.js/TypeScript
+# Soverstack Runtime
 
-Runtime Docker pour Soverstack - Le cerveau qui orchestre l'infrastructure.
+The CLI that orchestrates sovereign infrastructure deployment. Runs inside a Docker container alongside Ansible and Terraform.
 
----
-
-## 🎯 Vue d'Ensemble
-
-Le **runtime** est le CLI Node.js qui s'exécute **dans le container Docker**. Il :
-
-1. ✅ Valide les configurations YAML
-2. ✅ Génère les inventaires Ansible et tfvars Terraform
-3. ✅ Orchestre Ansible et Terraform
-4. ✅ Gère l'état de l'infrastructure
-5. ✅ Assure la sécurité et la conformité
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     MACHINE HÔTE                            │
-│                                                             │
-│  Launcher → Docker Container → Runtime (Node.js)           │
-│                                      ↓                      │
-│                          [ Ansible + Terraform ]            │
-└─────────────────────────────────────────────────────────────┘
+User → soverstack (Go launcher) → Docker container → Runtime (this) → Ansible/Terraform → Your servers
 ```
 
----
+The runtime:
+- Validates YAML configurations
+- Computes execution plans (desired state vs current state)
+- Generates Ansible artifacts (inventories, host_vars, VM definitions)
+- Manages infrastructure state
+- Handles SSH key generation and rotation
 
-## 📁 Structure du Projet
-
-```
-runtine-nodejs/
-├── type.ts                    # ⭐ Définitions TypeScript (LIRE EN PREMIER)
-├── README.md                  # Documentation (ce fichier)
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts               # Point d'entrée du CLI
-    ├── commands/              # Implémentation des commandes
-    │   ├── init/              # soverstack init
-    │   ├── validate/          # soverstack validate
-    │   ├── plan/              # soverstack plan
-    │   ├── apply/             # soverstack apply
-    │   ├── destroy/           # soverstack destroy
-    │   ├── dns-update/        # soverstack dns:update
-    │   ├── graph/             # soverstack graph
-    │   └── generate-ssh/      # soverstack generate:ssh-keys
-    ├── validators/            # Validation des schémas YAML
-    ├── generators/            # Génération Ansible/Terraform
-    ├── secrets/               # Secrets management (Vault, SOPS)
-    └── utils/                 # Utilitaires
-```
-
----
-
-## 🔒 SÉCURITÉ - RÈGLES CRITIQUES
-
-### ❌ INTERDICTIONS ABSOLUES
-
-1. **JAMAIS de mots de passe en clair** dans les fichiers YAML
-2. **JAMAIS de clés SSH privées** dans le repo Git
-3. **JAMAIS de secrets** committés dans Git
-
-### ✅ BONNES PRATIQUES OBLIGATOIRES
-
-#### 1. Utiliser des Variables d'Environnement
-
-```yaml
-# ❌ MAUVAIS - Mot de passe en clair
-servers:
-  - name: srv1
-    root_password: "mypassword123"
-
-# ✅ BON - Référence à une variable d'environnement
-servers:
-  - name: srv1
-    root_password_env_var: "ROOT_PASSWORD_SRV1"
-```
-
-**Utilisation** :
+## Commands
 
 ```bash
-export ROOT_PASSWORD_SRV1="mypassword123"
-soverstack apply
+soverstack init [project-name]              # Initialize a new project
+soverstack validate [path] [-v]             # Validate project configuration
+soverstack plan [path] [-v] [--debug]       # Show execution plan
+soverstack apply [path] [-v] [--debug]      # Apply infrastructure changes
+soverstack add region                       # Add a region to existing project
+soverstack add zone                         # Add a zone to existing project
+soverstack generate ssh [--all|--region|--dc]  # Generate/rotate SSH keys
 ```
 
----
+## Project Structure
 
-#### 2. Utiliser Vault (Recommandé pour Production)
-
-```yaml
-# platform.yaml
-secrets:
-  provider: "vault"
-  vault_address: "https://vault.example.com"
-  vault_token_env_var: "VAULT_TOKEN"
-
-# datacenter.yaml
-servers:
-  - name: srv1
-    root_password_vault_path: "secret/data/servers/srv1/root_password"
-```
-
-**Utilisation** :
-
-```bash
-export VAULT_TOKEN="s.abc123..."
-soverstack apply
-```
-
----
-
-#### 3. Utiliser SOPS pour Chiffrer les Fichiers
-
-```bash
-# Chiffrer un fichier
-sops -e datacenter.yaml > datacenter.enc.yaml
-
-# Utiliser avec Soverstack
-sops -d datacenter.enc.yaml | soverstack validate
-```
-
-**`.gitignore`** :
-
-```
-# Secrets
-.soverstack/secrets/
-*.enc.yaml
-ssh/id_rsa
-ssh/id_rsa.pub
-```
-
----
-
-## 📊 Architecture - Mode Simple vs Avancé
-
-### Mode Simple (Recommandé pour Débuter)
-
-**Un seul fichier pour tout** :
+A Soverstack project looks like this after `soverstack init`:
 
 ```
 my-project/
-├── soverstack-simple.yaml    # Toute la config ici
+├── platform.yaml              # Global config (version, domain, tier, images)
+├── .env                       # Bootstrap passwords (never commit)
+├── .ssh/                      # SSH keys (never commit)
+├── inventory/
+│   └── <region>/
+│       ├── region.yaml
+│       └── datacenters/
+│           ├── hub-<name>/    # Backup/storage datacenter
+│           │   ├── nodes.yaml
+│           │   ├── network.yaml
+│           │   └── ssh.yaml
+│           └── zone-<name>/   # Production compute datacenter
+│               ├── nodes.yaml
+│               ├── network.yaml
+│               └── ssh.yaml
+├── workloads/
+│   ├── global/                # database, dns, secrets, identity, mesh
+│   ├── regional/<region>/     # monitoring, bastion, siem
+│   └── zonal/<region>/<dc>/   # firewall, loadbalancer, storage, backup
 └── .soverstack/
-    ├── state.json
-    └── audit.log
+    ├── state/state.json       # Infrastructure state
+    ├── ansible/               # Generated Ansible artifacts
+    └── logs/                  # Apply run logs
 ```
 
-**soverstack-simple.yaml** :
+## Infrastructure Tiers
 
-```yaml
-name: my-project
-version: "1.0.0"
-environment: prod
-domain: example.com
+| Tier | Nodes | HA | Use Case |
+|------|-------|----|----------|
+| Local | 1+ | Optional (warnings) | Dev / Testing / Homelab |
+| Production | 3+ | Required (errors) | Production workloads |
+| Enterprise | 3+ | Required + network isolation | Mission-critical |
 
-datacenters:
-  - name: dc-prod
-    servers:
-      - name: srv1
-        ip: 10.0.0.1
-        # ...
+## Development
 
-computes:
-  - name: web-servers
-    virtual_machines:
-      - name: web-1
-        # ...
+### Prerequisites
 
-features:
-  monitoring:
-    enabled: true
-    # ...
-```
+- Node.js >= 18
+- npm
 
----
-
-### Mode Avancé (Recommandé pour Production)
-
-**Fichiers séparés par layer** :
-
-```
-my-project/
-├── platform.yaml              # Config principale
-├── .soverstack/
-│   ├── state.json             # État actuel
-│   ├── audit.log              # Logs d'audit
-│   └── secrets/               # Secrets chiffrés (SOPS)
-│       ├── root-passwords.enc.yaml
-│       └── ssh-keys.enc.yaml
-├── layers/
-│   ├── datacenters/
-│   │   ├── dc-prod.yaml
-│   │   └── dc-dev.yaml
-│   ├── computes/
-│   │   └── compute-prod.yaml
-│   ├── clusters/
-│   │   └── k8s-prod.yaml
-│   └── features/
-│       └── features-prod.yaml
-└── .gitignore
-```
-
-**platform.yaml** :
-
-```yaml
-name: my-project
-version: "1.0.0"
-environment: prod
-domain: example.com
-
-secrets:
-  provider: "vault"
-  vault_address: "https://vault.example.com"
-
-layers:
-  datacenter: layers/datacenters/dc-prod.yaml
-  compute: layers/computes/compute-prod.yaml
-  clusters: layers/clusters/k8s-prod.yaml
-  features: layers/features/features-prod.yaml
-```
-
----
-
-## 🚀 Commandes Disponibles
-
-### Initialisation
+### Setup
 
 ```bash
-# Créer un nouveau projet
-soverstack init my-project
-
-# Générer des clés SSH
-soverstack generate:ssh-keys
+npm install
 ```
 
----
+### Build
+
+```bash
+npm run build          # Bundle with esbuild → dist/index.js
+npm run build:tsc      # TypeScript compilation (type checking)
+```
+
+### Run locally
+
+```bash
+npm run dev -- validate path/to/project
+npm run dev -- init my-project
+```
+
+### Test
+
+```bash
+npm test               # Run all tests (81 tests, 4 suites)
+npm run test:watch     # Watch mode
+```
+
+### Lint & Format
+
+```bash
+npm run lint
+npm run format
+```
+
+## Docker Image
+
+The runtime is packaged as a Docker image with Node.js, Ansible, and Terraform.
+
+### Build
+
+```bash
+docker build -t ghcr.io/soverstack/soverstack-runtime:latest .
+```
+
+### Run
+
+```bash
+docker run --rm -v $PWD:/workspace ghcr.io/soverstack/soverstack-runtime:latest validate
+```
+
+### Tool Versions
+
+All runtime tool versions are defined in `package.json` under `runtime`:
+
+```json
+"runtime": {
+  "ansible_core": "2.16.0",
+  "terraform": "1.6.6",
+  "node": "18"
+}
+```
+
+The Dockerfile reads these at build time — change versions in one place.
+
+## CI/CD
+
+GitHub Actions automatically builds and pushes the Docker image on every push to `main` or version tag.
+
+```
+Push to main     → ghcr.io/soverstack/soverstack-runtime:latest
+Tag v1.0.0       → ghcr.io/soverstack/soverstack-runtime:v1.0.0
+```
+
+See `.github/workflows/build.yml`.
+
+## How It Works
 
 ### Validation
 
-```bash
-# Valider toute la configuration
-soverstack validate
+Two-layer validation:
+1. **Zod schemas** — structural validation (types, formats, required fields)
+2. **Custom validators** — cross-file logic (HA requirements, reference integrity, uniqueness)
 
-# Valider un layer spécifique
-soverstack validate datacenter dc-prod
-soverstack validate compute web-servers
-soverstack validate cluster k8s-prod
-soverstack validate feature monitoring
-```
+### Plan
 
----
+Computes diff between desired state (YAML files) and current state (`state.json`):
+- New nodes → bootstrap action
+- Changed services → update/recreate action
+- Removed services → destroy action
 
-### Planification
+### Apply
 
-```bash
-# Voir les changements à appliquer
-soverstack plan
+1. Validate project
+2. Compute plan
+3. Generate Ansible artifacts in `.soverstack/ansible/`
+4. Execute Ansible playbooks phase by phase
+5. Update state after each successful action
 
-# Plan pour un layer spécifique
-soverstack plan datacenter dc-prod
+Deploy order: Bootstrap → Global (DB → Vault → Identity → DNS → Mesh) → Regional → Zonal
 
-# Dry-run (preview sans appliquer)
-soverstack apply --dry-run
-```
+### SSH Key Management
 
-**Output exemple** :
+- 2 users per datacenter: admin + backup
+- Safe rotation via `.ssh/.previous/` backup
+- Keys must be deployed via `apply` before next rotation
+- Key content hashed for change detection
 
-```
-Plan Summary:
-  + Create: 5 VMs
-  ~ Update: 2 VMs (ip change)
-  - Delete: 1 VM
+### Credentials
 
-Changes:
-  [+] vm-web-1 (ip: 10.0.1.10, host: srv1)
-  [~] vm-db-1 (ip: 10.0.1.20 → 10.0.1.25)
-  [-] vm-old-1
+Three types, used progressively:
 
-Estimated duration: 5m30s
-Continue? [y/N]
-```
+| Type | Source | Phase |
+|------|--------|-------|
+| `env` | `.env` file | Bootstrap |
+| `file` | `.ssh/` directory | Bootstrap |
+| `vault` | HashiCorp Vault | Post-deploy |
 
----
-
-### Application
-
-```bash
-# Appliquer toute l'infrastructure
-soverstack apply
-
-# Appliquer un layer spécifique
-soverstack apply datacenter dc-prod
-soverstack apply compute web-servers
-soverstack apply cluster k8s-prod
-soverstack apply feature monitoring
-```
-
----
-
-### Destruction
-
-```bash
-# ⚠️ Détruire TOUTE la plateforme
-soverstack destroy
-
-# Détruire un layer spécifique
-soverstack destroy feature monitoring
-soverstack destroy cluster k8s-prod
-soverstack destroy compute web-servers
-soverstack destroy datacenter dc-prod
-```
-
-**⚠️ Règles de dépendances** :
-
-- Impossible de destroy un datacenter si des compute/clusters en dépendent
-- Impossible de destroy un cluster si des features en dépendent
-- Ordre recommandé : features → clusters → computes → datacenter
-
----
-
-### Visualisation
-
-```bash
-# Graph complet des dépendances
-soverstack graph
-
-# Graph détaillé
-soverstack graph:all
-
-# Graph d'un layer spécifique
-soverstack graph:datacenter dc-prod
-soverstack graph:cluster k8s-prod
-```
-
-**Output exemple** :
+## Source Layout
 
 ```
-Platform: my-project
-  ├── Datacenter: dc-prod
-  │   ├── Cluster: k8s-prod (depends on dc-prod)
-  │   │   └── Features: monitoring (depends on k8s-prod)
-  │   └── Compute: web-servers (depends on dc-prod)
-  └── Firewall: opnsense (depends on dc-prod)
-
-⚠️ Cannot destroy dc-prod: 3 dependent resources
+src/
+├── index.ts                    # CLI entry point (Commander.js)
+├── types.ts                    # Global type definitions
+├── constants.ts                # HA requirements, VM ID ranges
+├── utils/logger.ts             # Structured logging (default, -v, --debug)
+└── commands/
+    ├── init/                   # Project initialization + generators
+    ├── validate/               # Schema + logic validation
+    ├── plan/                   # State diffing + plan computation
+    ├── apply/                  # Ansible artifact generation + execution
+    ├── add/                    # Add regions/zones to existing projects
+    └── generate/generate-ssh/  # SSH key generation + rotation
 ```
 
----
+## License
 
-### DNS
-
-```bash
-# Mettre à jour les nameservers DNS
-soverstack dns:update
-```
-
----
-
-## 🔄 Workflow Complet
-
-### 1. Initialisation
-
-```bash
-# Créer le projet
-soverstack init my-project
-cd my-project
-
-# Générer des clés SSH
-soverstack generate:ssh-keys
-```
-
-**Résultat** :
-
-```
-my-project/
-├── platform.yaml
-├── layers/
-│   ├── datacenters/dc-prod.yaml
-│   ├── computes/compute-prod.yaml
-│   └── features/features-prod.yaml
-└── .soverstack/
-```
-
----
-
-### 2. Configuration
-
-Éditer `platform.yaml` et les layers selon vos besoins.
-
-**Exemple datacenter** :
-
-```yaml
-# layers/datacenters/dc-prod.yaml
-name: dc-prod
-servers:
-  - name: srv1
-    id: 123
-    ip: 10.0.0.1
-    port: 22
-    root_password_env_var: "ROOT_PASSWORD_SRV1"
-    os: proxmox
-    disk_encryption:
-      enabled: true
-      pass_key_env_var: "DISK_KEY_SRV1"
-```
-
----
-
-### 3. Validation
-
-```bash
-# Valider la configuration
-soverstack validate
-
-# Output:
-# ✅ Platform configuration is valid
-# ✅ Datacenter dc-prod is valid
-# ✅ Compute web-servers is valid
-# ✅ All layers validated successfully
-```
-
----
-
-### 4. Planification
-
-```bash
-# Voir ce qui va être créé
-soverstack plan
-
-# Output:
-# Plan Summary:
-#   + Create: 5 VMs, 1 Cluster
-#   ~ Update: 0
-#   - Delete: 0
-#
-# Estimated duration: 8m15s
-```
-
----
-
-### 5. Application (Dry-Run d'abord)
-
-```bash
-# Preview des changements
-soverstack apply --dry-run
-
-# Si OK, appliquer pour de vrai
-soverstack apply
-```
-
----
-
-### 6. Visualisation
-
-```bash
-# Voir le graph de l'infrastructure
-soverstack graph:all
-```
-
----
-
-## 📦 Types TypeScript
-
-Voir le fichier `type.ts` pour toutes les interfaces TypeScript.
-
-**Types principaux** :
-
-- `Platform` - Configuration principale
-- `Datacenter` - Serveurs physiques
-- `Compute` - VMs et conteneurs
-- `K8sCluster` - Cluster Kubernetes
-- `Feature` - Applications (monitoring, GitLab, etc.)
-- `SSHKeys` - Clés SSH
-- `State` - État de l'infrastructure
-- `Plan` - Résumé des changements
-
----
-
-## 🛡️ Checklist Sécurité
-
-Avant de déployer en production :
-
-- [ ] ❌ Aucun mot de passe en clair dans les YAML
-- [ ] ❌ Aucune clé SSH privée dans le repo
-- [ ] ✅ Tous les secrets dans des variables d'environnement ou Vault
-- [ ] ✅ `.gitignore` contient `.soverstack/secrets/`
-- [ ] ✅ Fichiers sensibles chiffrés avec SOPS
-- [ ] ✅ `accessibleOutsideVPN: false` pour services critiques
-- [ ] ✅ Validation stricte activée
-- [ ] ✅ Audit log activé
-- [ ] ✅ Dry-run testé avant apply
-
----
-
-## 🧪 Tests
-
-```bash
-# Valider tous les exemples
-npm run test:validate
-
-# Tester le plan
-npm run test:plan
-
-# Tester la génération Ansible/Terraform
-npm run test:generate
-```
-
----
-
-## 🐛 Debugging
-
-### Activer les logs détaillés
-
-```bash
-export SOVERSTACK_DEBUG=true
-soverstack validate
-```
-
-### Voir les fichiers générés
-
-```bash
-# Les inventaires Ansible et tfvars sont dans :
-.soverstack/generated/
-├── ansible/
-│   ├── inventory.yml
-│   └── vars.yml
-└── terraform/
-    ├── main.tf
-    └── terraform.tfvars
-```
-
----
-
-## 📚 Documentation Complète
-
-- **Types** : Voir `type.ts` avec tous les commentaires
-- **Launcher** : Voir `../launcher-nodejs/README.md`
-- **Architecture** : Voir `../launcher-nodejs/ARCHITECTURE-COMPLETE.md`
-- **Secrets** : Voir section "Sécurité" ci-dessus
-
----
-
-## 🎯 Next Steps
-
-1. Lire `type.ts` pour comprendre les types
-2. Implémenter les commandes dans `src/commands/`
-3. Ajouter la validation des schémas avec Zod
-4. Implémenter le secrets management (Vault/SOPS)
-5. Créer les générateurs Ansible/Terraform
-6. Ajouter les tests
-
----
-
-**Prêt pour l'implémentation !** 🚀
-
-Pour toute question, voir la documentation complète ou les exemples dans `examples/`.
+AGPL-3.0 — See [LICENSE](./LICENSE)
