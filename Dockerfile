@@ -21,7 +21,9 @@ COPY package*.json ./
 COPY tsconfig.json ./
 COPY esbuild.config.mjs ./
 
-RUN npm ci
+# npm install (not ci) to resolve platform-specific binaries for linux
+# package-lock.json may contain Windows-only esbuild binaries
+RUN npm install --prefer-offline
 
 COPY src/ ./src/
 
