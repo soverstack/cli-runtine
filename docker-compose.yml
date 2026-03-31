@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -9,7 +9,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     image: soverstack/runtime:dev
-    container_name: soverstack-runtime-dev
+    container_name: cli-runtime-dev
     volumes:
       # Mount source code pour hot reload
       - ./src:/app/src:ro
@@ -32,7 +32,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: soverstack/runtime:latest
-    container_name: soverstack-runtime-prod
+    container_name: cli-runtime-prod
     volumes:
       - ${PWD}:/workspace
     working_dir: /workspace

@@ -9,6 +9,7 @@ User → soverstack (Go launcher) → Docker container → Runtime (this) → An
 ```
 
 The runtime:
+
 - Validates YAML configurations
 - Computes execution plans (desired state vs current state)
 - Generates Ansible artifacts (inventories, host_vars, VM definitions)
@@ -60,11 +61,11 @@ my-project/
 
 ## Infrastructure Tiers
 
-| Tier | Nodes | HA | Use Case |
-|------|-------|----|----------|
-| Local | 1+ | Optional (warnings) | Dev / Testing / Homelab |
-| Production | 3+ | Required (errors) | Production workloads |
-| Enterprise | 3+ | Required + network isolation | Mission-critical |
+| Tier       | Nodes | HA                           | Use Case                |
+| ---------- | ----- | ---------------------------- | ----------------------- |
+| Local      | 1+    | Optional (warnings)          | Dev / Testing / Homelab |
+| Production | 3+    | Required (errors)            | Production workloads    |
+| Enterprise | 3+    | Required + network isolation | Mission-critical        |
 
 ## Development
 
@@ -114,13 +115,13 @@ The runtime is packaged as a Docker image with Node.js, Ansible, and Terraform.
 ### Build
 
 ```bash
-docker build -t ghcr.io/soverstack/soverstack-runtime:latest .
+docker build -t ghcr.io/soverstack/cli-runtime:latest .
 ```
 
 ### Run
 
 ```bash
-docker run --rm -v $PWD:/workspace ghcr.io/soverstack/soverstack-runtime:latest validate
+docker run --rm -v $PWD:/workspace ghcr.io/soverstack/cli-runtime:latest validate
 ```
 
 ### Tool Versions
@@ -142,8 +143,8 @@ The Dockerfile reads these at build time — change versions in one place.
 GitHub Actions automatically builds and pushes the Docker image on every push to `main` or version tag.
 
 ```
-Push to main     → ghcr.io/soverstack/soverstack-runtime:latest
-Tag v1.0.0       → ghcr.io/soverstack/soverstack-runtime:v1.0.0
+Push to main     → ghcr.io/soverstack/cli-runtime:latest
+Tag v1.0.0       → ghcr.io/soverstack/cli-runtime:v1.0.0
 ```
 
 See `.github/workflows/build.yml`.
@@ -153,12 +154,14 @@ See `.github/workflows/build.yml`.
 ### Validation
 
 Two-layer validation:
+
 1. **Zod schemas** — structural validation (types, formats, required fields)
 2. **Custom validators** — cross-file logic (HA requirements, reference integrity, uniqueness)
 
 ### Plan
 
 Computes diff between desired state (YAML files) and current state (`state.json`):
+
 - New nodes → bootstrap action
 - Changed services → update/recreate action
 - Removed services → destroy action
@@ -184,11 +187,11 @@ Deploy order: Bootstrap → Global (DB → Vault → Identity → DNS → Mesh) 
 
 Three types, used progressively:
 
-| Type | Source | Phase |
-|------|--------|-------|
-| `env` | `.env` file | Bootstrap |
-| `file` | `.ssh/` directory | Bootstrap |
-| `vault` | HashiCorp Vault | Post-deploy |
+| Type    | Source            | Phase       |
+| ------- | ----------------- | ----------- |
+| `env`   | `.env` file       | Bootstrap   |
+| `file`  | `.ssh/` directory | Bootstrap   |
+| `vault` | HashiCorp Vault   | Post-deploy |
 
 ## Source Layout
 

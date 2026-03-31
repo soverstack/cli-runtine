@@ -4,7 +4,7 @@
   "description": "Soverstack Runtime - CLI orchestrating infrastructure deployment",
   "main": "dist/index.js",
   "bin": {
-    "soverstack-runtime": "./dist/index.js"
+    "cli-runtime": "./dist/index.js"
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
