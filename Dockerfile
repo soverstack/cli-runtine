@@ -36,7 +36,7 @@ RUN node -e " \
   const fs = require('fs'); \
   fs.writeFileSync('/tmp/versions.env', \
     'NODE_VERSION=' + pkg.runtime.node + '\n' + \
-    'ANSIBLE_VERSION=' + pkg.runtime.ansible + '\n' + \
+    'ANSIBLE_CORE_VERSION=' + pkg.runtime.ansible_core + '\n' + \
     'TERRAFORM_VERSION=' + pkg.runtime.terraform + '\n' + \
     'SOVERSTACK_VERSION=' + pkg.version + '\n' \
   );"
@@ -73,10 +73,10 @@ RUN . /tmp/versions.env \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer Ansible (version from package.json)
+# Installer Ansible Core (version from package.json)
 RUN . /tmp/versions.env \
     && pip3 install --no-cache-dir --break-system-packages \
-    ansible==${ANSIBLE_VERSION} \
+    ansible-core==${ANSIBLE_CORE_VERSION} \
     jmespath
 
 # Installer Terraform (version from package.json)

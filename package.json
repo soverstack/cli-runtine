@@ -60,7 +60,7 @@
     "node": ">=18.0.0"
   },
   "runtime": {
-    "ansible": "2.16.0",
+    "ansible_core": "2.16.0",
     "terraform": "1.6.6",
     "node": "18"
   }
