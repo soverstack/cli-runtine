@@ -2,108 +2,96 @@
 # SOVERSTACK RUNTIME - DOCKER IMAGE
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# Image Docker pour le runtime Soverstack
-# Cette image contient le CLI Node.js + Ansible + Terraform
+# Versions are defined in package.json under "runtime" and extracted at build time.
 #
 # Usage:
-#   docker build -t soverstack/runtime:latest .
-#   docker run --rm -v $PWD:/workspace soverstack/runtime:latest validate
+#   docker build -t ghcr.io/soverstack/runtime:latest .
+#   docker run --rm -v $PWD:/workspace ghcr.io/soverstack/runtime:latest validate
 #
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ───────────────────────────────────────────────────────────────────────────
-# STAGE 1: Build - Compilation TypeScript
+# STAGE 1: Build - Bundle avec esbuild
 # ───────────────────────────────────────────────────────────────────────────
 FROM node:18-alpine AS builder
 
 WORKDIR /build
 
-# Copier les fichiers de dépendances
 COPY package*.json ./
 COPY tsconfig.json ./
+COPY esbuild.config.mjs ./
 
-# Installer les dépendances
 RUN npm ci
 
-# Copier le code source
 COPY src/ ./src/
 
-# Compiler TypeScript → JavaScript
+# Bundle → un seul fichier dist/index.js
 RUN npm run build
 
+# Extract versions from package.json for the runtime stage
+RUN node -e " \
+  const pkg = require('./package.json'); \
+  const fs = require('fs'); \
+  fs.writeFileSync('/tmp/versions.env', \
+    'NODE_VERSION=' + pkg.runtime.node + '\n' + \
+    'ANSIBLE_VERSION=' + pkg.runtime.ansible + '\n' + \
+    'TERRAFORM_VERSION=' + pkg.runtime.terraform + '\n' + \
+    'SOVERSTACK_VERSION=' + pkg.version + '\n' \
+  );"
+
 # ───────────────────────────────────────────────────────────────────────────
-# STAGE 2: Runtime - Image finale avec Ansible + Terraform
+# STAGE 2: Runtime - Debian slim + Node.js + Ansible + Terraform
 # ───────────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-# Métadonnées
 LABEL maintainer="Soverstack <contact@soverstack.com>"
 LABEL description="Soverstack Runtime - Infrastructure Orchestration"
-LABEL version="1.0.0"
 
-# Variables d'environnement
-ENV NODE_VERSION=18 \
-    TERRAFORM_VERSION=1.6.6 \
-    ANSIBLE_VERSION=2.16.0 \
-    DEBIAN_FRONTEND=noninteractive
+# Copy version file from builder
+COPY --from=builder /tmp/versions.env /tmp/versions.env
 
-# Installer les dépendances système
-RUN apt-get update && apt-get install -y \
-    # Node.js runtime
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Installer dépendances système en une seule couche
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
-    # Python pour Ansible
     python3 \
     python3-pip \
-    # SSH client
     openssh-client \
-    # Git (pour cloner des repos si nécessaire)
     git \
-    # Utilitaires
     unzip \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer Node.js 18
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
+# Installer Node.js (version from package.json)
+RUN . /tmp/versions.env \
+    && curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer Ansible
-RUN pip3 install --no-cache-dir \
+# Installer Ansible (version from package.json)
+RUN . /tmp/versions.env \
+    && pip3 install --no-cache-dir --break-system-packages \
     ansible==${ANSIBLE_VERSION} \
-    ansible-lint \
-    jmespath \
-    && rm -rf /root/.cache
+    jmespath
 
-# Installer Terraform
-RUN curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o terraform.zip \
-    && unzip terraform.zip \
-    && mv terraform /usr/local/bin/ \
-    && rm terraform.zip
+# Installer Terraform (version from package.json)
+RUN . /tmp/versions.env \
+    && curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/terraform.zip \
+    && unzip /tmp/terraform.zip -d /usr/local/bin/ \
+    && rm /tmp/terraform.zip
 
-# Créer la structure de répertoires
-RUN mkdir -p /opt/soverstack/{cli,ansible,terraform,schemas}
+# Cleanup
+RUN rm /tmp/versions.env
 
-# Copier le CLI compilé depuis le builder
-COPY --from=builder /build/dist /opt/soverstack/cli/dist
-COPY --from=builder /build/package.json /opt/soverstack/cli/
-COPY --from=builder /build/node_modules /opt/soverstack/cli/node_modules
+# Copier le bundle unique (pas besoin de node_modules)
+COPY --from=builder /build/dist/index.js /opt/soverstack/cli/index.js
+RUN chmod +x /opt/soverstack/cli/index.js \
+    && ln -s /opt/soverstack/cli/index.js /usr/local/bin/soverstack-cli
 
-# Créer un lien symbolique pour le CLI
-RUN ln -s /opt/soverstack/cli/dist/index.js /usr/local/bin/soverstack-cli \
-    && chmod +x /opt/soverstack/cli/dist/index.js
-
-# Configurer le répertoire de travail
 WORKDIR /workspace
 
-# Point d'entrée : le CLI Soverstack
-ENTRYPOINT ["node", "/opt/soverstack/cli/dist/index.js"]
-
-# Commande par défaut : --help
+ENTRYPOINT ["node", "/opt/soverstack/cli/index.js"]
 CMD ["--help"]
-
-# Vérifications de santé
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -v && terraform version && ansible --version || exit 1
