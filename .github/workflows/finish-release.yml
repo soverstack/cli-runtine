@@ -24,35 +24,46 @@ jobs:
         run: |
           VERSION=$(jq -r .version package.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Finishing release: $VERSION"
 
-          # Compute next dev version (bump minor: 1.0.0 → 1.1.0-dev)
           IFS='.' read -r major minor patch <<< "$VERSION"
           NEXT="$major.$((minor + 1)).0-dev"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
 
-      - name: Merge, tag, and bump
+      # Step 1: Merge release into main and create tag
+      - name: Merge into main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BRANCH="${GITHUB_REF#refs/heads/}"
           VERSION="${{ steps.version.outputs.version }}"
-          NEXT="${{ steps.version.outputs.next }}"
 
-          # Merge release branch into main
           git fetch origin main
           git checkout main
           git merge "$BRANCH" --no-ff -m "release: v$VERSION"
-
-          # Create tag
           git tag "v$VERSION"
-
-          # Push main + tag
           git push origin main
           git push origin "v$VERSION"
 
-          # Merge main back into develop and bump version
+      # Step 2: Build and push stable image (HEAD is on main)
+      - name: Build and push stable image
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker build -t ${{ env.IMAGE_NAME }}:${VERSION} -t ${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ env.IMAGE_NAME }}:${VERSION}
+          docker push ${{ env.IMAGE_NAME }}:latest
+
+      # Step 3: Merge back into develop and bump version
+      - name: Bump develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          VERSION="${{ steps.version.outputs.version }}"
+          NEXT="${{ steps.version.outputs.next }}"
+          BRANCH="${GITHUB_REF#refs/heads/}"
+
           git fetch origin develop
           git checkout develop
           git merge main --no-ff -m "merge: v$VERSION back into develop"
@@ -61,29 +72,11 @@ jobs:
           git commit -m "bump version to $NEXT"
           git push origin develop
 
-          # Delete release branch
           git push origin --delete "$BRANCH"
-
-      - name: Build and push stable image
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Login to ghcr.io
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-          # Checkout main (where the release code is)
-          git checkout main
-
-          # Build and push with stable tags
-          docker build -t ${{ env.IMAGE_NAME }}:${VERSION} -t ${{ env.IMAGE_NAME }}:latest .
-          docker push ${{ env.IMAGE_NAME }}:${VERSION}
-          docker push ${{ env.IMAGE_NAME }}:latest
 
       - name: Summary
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          NEXT="${{ steps.version.outputs.next }}"
-          echo "### Release v$VERSION finished" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Image \`${{ env.IMAGE_NAME }}:$VERSION\` published" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Release v${{ steps.version.outputs.version }} finished" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image \`${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}\` published" >> "$GITHUB_STEP_SUMMARY"
           echo "- Merged into \`main\` and back into \`develop\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`develop\` bumped to \`$NEXT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`develop\` bumped to \`${{ steps.version.outputs.next }}\`" >> "$GITHUB_STEP_SUMMARY"
