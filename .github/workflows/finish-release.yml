@@ -5,6 +5,10 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/cli-runtime
 
 jobs:
   finish:
@@ -27,7 +31,7 @@ jobs:
           NEXT="$major.$((minor + 1)).0-dev"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
 
-      - name: Merge into main and tag
+      - name: Merge, tag, and bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -44,7 +48,7 @@ jobs:
           # Create tag
           git tag "v$VERSION"
 
-          # Push main + tag (tag triggers stable image build in ci.yml)
+          # Push main + tag
           git push origin main
           git push origin "v$VERSION"
 
@@ -60,8 +64,26 @@ jobs:
           # Delete release branch
           git push origin --delete "$BRANCH"
 
+      - name: Build and push stable image
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Login to ghcr.io
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          # Checkout main (where the release code is)
+          git checkout main
+
+          # Build and push with stable tags
+          docker build -t ${{ env.IMAGE_NAME }}:${VERSION} -t ${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ env.IMAGE_NAME }}:${VERSION}
+          docker push ${{ env.IMAGE_NAME }}:latest
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NEXT="${{ steps.version.outputs.next }}"
           echo "### Release v$VERSION finished" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Tag \`v$VERSION\` created → image will be built automatically" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image \`${{ env.IMAGE_NAME }}:$VERSION\` published" >> "$GITHUB_STEP_SUMMARY"
           echo "- Merged into \`main\` and back into \`develop\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`develop\` bumped to \`$NEXT\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Branch \`$BRANCH\` deleted" >> "$GITHUB_STEP_SUMMARY"

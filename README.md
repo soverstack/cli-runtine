@@ -71,7 +71,7 @@ my-project/
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 24
 - npm
 
 ### Setup
@@ -97,7 +97,7 @@ npm run dev -- init my-project
 ### Test
 
 ```bash
-npm test               # Run all tests (81 tests, 4 suites)
+npm test               # Run all tests
 npm run test:watch     # Watch mode
 ```
 
@@ -115,7 +115,8 @@ The runtime is packaged as a Docker image with Node.js, Ansible, and Terraform.
 ### Build
 
 ```bash
-docker build -t ghcr.io/soverstack/cli-runtime:latest .
+make build             # Build production image
+make build-dev         # Build dev image (hot reload)
 ```
 
 ### Run
@@ -132,7 +133,7 @@ All runtime tool versions are defined in `package.json` under `runtime`:
 "runtime": {
   "ansible_core": "2.16.0",
   "terraform": "1.6.6",
-  "node": "18"
+  "node": "24"
 }
 ```
 
@@ -140,14 +141,19 @@ The Dockerfile reads these at build time — change versions in one place.
 
 ## CI/CD
 
-GitHub Actions automatically builds and pushes the Docker image on every push to `main` or version tag.
+GitHub Actions workflow with the same release process as the launcher:
 
 ```
-Push to main     → ghcr.io/soverstack/cli-runtime:latest
-Tag v1.0.0       → ghcr.io/soverstack/cli-runtime:v1.0.0
+Push to develop  → ghcr.io/soverstack/cli-runtime:<version>-dev (pre-release, overwritten each push)
+Tag v1.0.0       → ghcr.io/soverstack/cli-runtime:1.0.0 + latest (stable)
 ```
 
-See `.github/workflows/build.yml`.
+### Release workflow
+
+1. **Prepare Release** (manual trigger on `develop`) → creates `release/<version>` branch, removes `-dev` from `package.json`
+2. **Finish Release** (manual trigger on `release/*`) → merges into `main`, tags, publishes stable image, bumps `develop` to next `-dev`
+
+See `.github/workflows/`.
 
 ## How It Works
 
