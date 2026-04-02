@@ -13,7 +13,7 @@
 # ───────────────────────────────────────────────────────────────────────────
 # STAGE 1: Build - Bundle avec esbuild
 # ───────────────────────────────────────────────────────────────────────────
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /build
 
@@ -46,7 +46,7 @@ RUN node -e " \
 # ───────────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-LABEL maintainer="Soverstack <contact@soverstack.com>"
+LABEL maintainer="Soverstack <contact@soverstack.io>"
 LABEL description="Soverstack Runtime - Infrastructure Orchestration"
 
 # Copy version file from builder
