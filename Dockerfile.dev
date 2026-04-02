@@ -10,7 +10,7 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════
 
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Variables d'environnement
 ENV NODE_ENV=development
