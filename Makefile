@@ -5,7 +5,7 @@
 .PHONY: help build build-dev run run-dev clean test lint push
 
 # Variables
-IMAGE_NAME := soverstack/runtime
+IMAGE_NAME := soverstack/cli-runtime
 VERSION := $(shell cat package.json | grep version | head -1 | awk -F: '{ print $$2 }' | sed 's/[",]//g' | tr -d '[[:space:]]')
 REGISTRY := ghcr.io/soverstack
 
@@ -65,11 +65,11 @@ lint:
 # ───────────────────────────────────────────────────────────────────────────
 push:
 	@echo "📤 Pushing to registry..."
-	docker tag $(IMAGE_NAME):latest $(REGISTRY)/runtime:latest
-	docker tag $(IMAGE_NAME):$(VERSION) $(REGISTRY)/runtime:$(VERSION)
-	docker push $(REGISTRY)/runtime:latest
-	docker push $(REGISTRY)/runtime:$(VERSION)
-	@echo "✅ Pushed to $(REGISTRY)/runtime:$(VERSION)"
+	docker tag $(IMAGE_NAME):latest $(REGISTRY)/cli-runtime:latest
+	docker tag $(IMAGE_NAME):$(VERSION) $(REGISTRY)/cli-runtime:$(VERSION)
+	docker push $(REGISTRY)/cli-runtime:latest
+	docker push $(REGISTRY)/cli-runtime:$(VERSION)
+	@echo "✅ Pushed to $(REGISTRY)/cli-runtime:$(VERSION)"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Clean
