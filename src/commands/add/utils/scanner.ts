@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import yaml from "js-yaml";
+import { DEFAULT_KNOCKD_SEQUENCE } from "../../init/generators/inventory/sshYaml";
 
 // ════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -265,7 +266,7 @@ export function loadInventory(projectPath: string): Inventory {
       let users: InventorySshUser[] = [];
       let knockd: InventoryKnockd = {
         enabled: true,
-        sequence: [7000, 8500, 9000, 12000],
+        sequence: DEFAULT_KNOCKD_SEQUENCE,
         seq_timeout: 5,
         port_timeout: 30,
       };

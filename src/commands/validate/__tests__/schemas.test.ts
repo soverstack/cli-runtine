@@ -10,6 +10,7 @@ import {
   validateSshSchema,
   validateWorkloadSchema,
 } from "../schemas/validate";
+import { validateSsh } from "../validators/ssh";
 
 // ════════════════════════════════════════════════════════════════════════════
 // PLATFORM
@@ -195,6 +196,28 @@ describe("SshSchema", () => {
   test("knockd enabled without sequence fails", () => {
     const r = validateSshSchema({ ...validSsh, knockd: { enabled: true } }, "ssh.yaml");
     expect(r.valid).toBe(false);
+  });
+
+  test("knockd with default sequence fails validation", () => {
+    const dc = { name: "zone-paris", type: "zone" as const, region: "eu", dirPath: "/tmp" };
+    const parsed = {
+      ...validSsh,
+      knockd: { enabled: true, sequence: [7000, 8500, 9000, 12000], seq_timeout: 5, port_timeout: 30 },
+    };
+    const r = validateSsh(parsed, dc, "/tmp");
+    expect(r.valid).toBe(false);
+    expect(r.errors.some(e => e.message.includes("default sequence"))).toBe(true);
+  });
+
+  test("knockd with custom sequence passes validation", () => {
+    const dc = { name: "zone-paris", type: "zone" as const, region: "eu", dirPath: "/tmp" };
+    const parsed = {
+      ...validSsh,
+      knockd: { enabled: true, sequence: [12345, 54321, 33333], seq_timeout: 5, port_timeout: 30 },
+    };
+    const r = validateSsh(parsed, dc, "/tmp");
+    // Should not have knockd.sequence errors (may have key file warnings)
+    expect(r.errors.filter(e => e.field === "knockd.sequence").length).toBe(0);
   });
 });
 
