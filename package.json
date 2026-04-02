@@ -1,6 +1,6 @@
 {
   "name": "@soverstack/runtime",
-  "version": "1.0.0-dev",
+  "version": "1.0.0",
   "description": "Soverstack Runtime - CLI orchestrating infrastructure deployment",
   "main": "dist/index.js",
   "bin": {
