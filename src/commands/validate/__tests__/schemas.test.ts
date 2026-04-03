@@ -121,8 +121,8 @@ describe("RegionSchema", () => {
 describe("NodesSchema", () => {
   const validNodes = {
     nodes: [
-      { name: "pve-01", address: "10.1.10.10", role: "primary", bootstrap: { user: "root", port: 22, password: { type: "env", var_name: "PVE_01_PW" } } },
-      { name: "pve-02", address: "10.1.10.11", role: "secondary", bootstrap: { user: "root", port: 22, password: { type: "env", var_name: "PVE_02_PW" } } },
+      { name: "pve-01", public_ip: "10.1.10.10", role: "primary", bootstrap: { user: "root", port: 22, password: { type: "env", var_name: "PVE_01_PW" } } },
+      { name: "pve-02", public_ip: "10.1.10.11", role: "secondary", bootstrap: { user: "root", port: 22, password: { type: "env", var_name: "PVE_02_PW" } } },
     ],
   };
 
@@ -139,8 +139,8 @@ describe("NodesSchema", () => {
   test("duplicate node names fail", () => {
     const r = validateNodesSchema({
       nodes: [
-        { name: "pve-01", address: "10.1.10.10", role: "primary" },
-        { name: "pve-01", address: "10.1.10.11", role: "secondary" },
+        { name: "pve-01", public_ip: "10.1.10.10", role: "primary" },
+        { name: "pve-01", public_ip: "10.1.10.11", role: "secondary" },
       ],
     }, "nodes.yaml");
     expect(r.valid).toBe(false);
@@ -149,8 +149,8 @@ describe("NodesSchema", () => {
   test("two primaries fail", () => {
     const r = validateNodesSchema({
       nodes: [
-        { name: "pve-01", address: "10.1.10.10", role: "primary" },
-        { name: "pve-02", address: "10.1.10.11", role: "primary" },
+        { name: "pve-01", public_ip: "10.1.10.10", role: "primary" },
+        { name: "pve-02", public_ip: "10.1.10.11", role: "primary" },
       ],
     }, "nodes.yaml");
     expect(r.valid).toBe(false);
@@ -158,7 +158,7 @@ describe("NodesSchema", () => {
 
   test("invalid IP fails", () => {
     const r = validateNodesSchema({
-      nodes: [{ name: "pve-01", address: "999.999.999.999", role: "primary" }],
+      nodes: [{ name: "pve-01", public_ip: "999.999.999.999", role: "primary" }],
     }, "nodes.yaml");
     expect(r.valid).toBe(false);
   });

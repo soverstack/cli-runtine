@@ -57,7 +57,7 @@ describe("state", () => {
     const state = createEmptyState("plan-test");
     state.last_apply = "2026-03-30T10:00:00Z";
     state.nodes["pve-01"] = {
-      address: "10.1.10.10",
+      public_ip: "10.1.10.10",
       region: "eu",
       datacenter: "zone-paris",
       role: "primary",
@@ -69,7 +69,7 @@ describe("state", () => {
     saveState(projectPath, state);
     const loaded = loadState(projectPath, "plan-test");
     expect(loaded.last_apply).toBe("2026-03-30T10:00:00Z");
-    expect(loaded.nodes["pve-01"].address).toBe("10.1.10.10");
+    expect(loaded.nodes["pve-01"].public_ip).toBe("10.1.10.10");
 
     // Clean up for other tests
     fs.unlinkSync(path.join(projectPath, ".soverstack/state/state.json"));

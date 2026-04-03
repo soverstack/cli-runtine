@@ -58,14 +58,14 @@ export function validateNodes(
       nodeNames.add(node.name);
     }
 
-    if (!node.address) {
-      addError(r, file, `${label}: Missing IP address`, "nodes.address", "Add the server IP from your provider");
-    } else if (!IP_RE.test(node.address)) {
-      addError(r, file, `${label}: "${node.address}" is not a valid IP address (e.g., 10.1.10.10)`, "nodes.address");
+    if (!node.public_ip) {
+      addError(r, file, `${label}: Missing public IP address`, "nodes.public_ip", "Add the server IP from your provider");
+    } else if (!IP_RE.test(node.public_ip)) {
+      addError(r, file, `${label}: "${node.public_ip}" is not a valid IP address (e.g., 203.0.113.10)`, "nodes.public_ip");
     } else {
-      const octets = node.address.split(".").map(Number);
+      const octets = node.public_ip.split(".").map(Number);
       if (octets.some((o) => o < 0 || o > 255)) {
-        addError(r, file, `${label}: IP address "${node.address}" has octets outside 0-255`, "nodes.address");
+        addError(r, file, `${label}: IP address "${node.public_ip}" has octets outside 0-255`, "nodes.public_ip");
       }
     }
 

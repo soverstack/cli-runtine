@@ -8,6 +8,11 @@ import crypto from "crypto";
 // STATE
 // ════════════════════════════════════════════════════════════════════════════
 
+export interface NetworkState {
+  subnet: string;
+  vlan?: { id: number; interface: string; mtu: number };
+}
+
 export interface ProjectState {
   version: "1.0";
   project_name: string;
@@ -15,10 +20,13 @@ export interface ProjectState {
 
   nodes: Record<string, NodeState>;
   services: Record<string, ServiceState>; // keyed by vm_id
+
+  /** Networks per datacenter, locked after first bootstrap */
+  networks?: Record<string, Record<string, NetworkState>>; // dc → network name → config
 }
 
 export interface NodeState {
-  address: string;
+  public_ip: string;
   region: string;
   datacenter: string;
   role: string;
@@ -71,7 +79,7 @@ export interface SshKeyRef {
 
 export interface DesiredNode {
   name: string;
-  address: string;
+  public_ip: string;
   region: string;
   datacenter: string;
   role: string;
@@ -113,7 +121,7 @@ export type ActionType = "create" | "update" | "recreate" | "destroy" | "noop";
 export interface NodeAction {
   type: "bootstrap" | "update" | "ssh-rotate" | "noop" | "orphan" | "ssh-blocked";
   node: string;
-  address: string;
+  public_ip: string;
   region: string;
   datacenter: string;
   role: string;
@@ -208,7 +216,7 @@ export const ZONAL_HUB_DEPLOY_ORDER = ["storage", "backup"];
  *  Includes SSH key content hashes so key regeneration is detected. */
 export function hashNode(node: DesiredNode): string {
   const data = JSON.stringify({
-    address: node.address,
+    public_ip: node.public_ip,
     role: node.role,
     capabilities: node.capabilities.sort(),
     sshKeys: node.sshKeys.map((k) => ({

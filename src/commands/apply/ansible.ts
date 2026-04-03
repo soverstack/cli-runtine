@@ -36,6 +36,7 @@ export function generateAnsibleArtifacts(projectPath: string, plan: Plan, nodes:
     if (bootstrapNodes.length > 0) {
       generateBootstrapHostvars(projectPath, nodes.filter((n) => bootstrapNodes.includes(n.name)));
       generateInventory(projectPath, nodes);
+      generateGroupVars(projectPath, nodes);
     }
   }
 
@@ -69,7 +70,7 @@ function generateBootstrapHostvars(projectPath: string, nodes: DesiredNode[]): v
 
   for (const node of nodes) {
     const hostVar: Record<string, unknown> = {
-      ansible_host: node.address,
+      ansible_host: node.public_ip,
       ansible_user: node.bootstrap.user,
       ansible_port: node.bootstrap.port,
     };
@@ -102,7 +103,7 @@ function generateBootstrapHostvars(projectPath: string, nodes: DesiredNode[]): v
     fs.writeFileSync(filePath, yaml.dump(hostVar, { lineWidth: -1 }));
 
     log.step(`${filePath.replace(projectPath + path.sep, "")}`);
-    log.detail(`host: ${log.val(node.address)}  user: ${node.bootstrap.user}  port: ${node.bootstrap.port}`);
+    log.detail(`host: ${log.val(node.public_ip)}  user: ${node.bootstrap.user}  port: ${node.bootstrap.port}`);
     log.detail(`ssh_users: ${node.sshUsers.join(", ")}`);
     if (node.knockd.enabled) {
       log.detail(`knockd: [${node.knockd.sequence?.join(", ")}]`);
@@ -208,6 +209,69 @@ function generateDestroyDefinitions(projectPath: string, actions: ServiceAction[
   log.step(`${filePath.replace(projectPath + path.sep, "")}`);
   for (const vm of vms) {
     log.detail(`${log.SYM.destroy} ${vm.name.padEnd(20)} vm:${log.val(vm.vm_id)}  → ${vm.host}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// GROUP VARS (per datacenter — network, ceph, node list)
+// ════════════════════════════════════════════════════════════════════════════
+
+function generateGroupVars(projectPath: string, nodes: DesiredNode[]): void {
+  const groupVarsDir = path.join(projectPath, ANSIBLE_DIR, "group_vars");
+  fs.mkdirSync(groupVarsDir, { recursive: true });
+
+  // Group nodes by datacenter
+  const dcNodes = new Map<string, DesiredNode[]>();
+  for (const node of nodes) {
+    const dc = node.datacenter;
+    if (!dcNodes.has(dc)) dcNodes.set(dc, []);
+    dcNodes.get(dc)!.push(node);
+  }
+
+  for (const [dcName, dcNodeList] of dcNodes) {
+    // Load network.yaml for this DC
+    const regionName = dcNodeList[0].region;
+    const networkFile = path.join(projectPath, "inventory", regionName, "datacenters", dcName, "network.yaml");
+    const nodesFile = path.join(projectPath, "inventory", regionName, "datacenters", dcName, "nodes.yaml");
+
+    const groupVar: Record<string, unknown> = {
+      datacenter: {
+        name: dcName,
+        region: regionName,
+        type: dcName.startsWith("hub-") ? "hub" : "zone",
+      },
+    };
+
+    // Load network config
+    if (fs.existsSync(networkFile)) {
+      try {
+        const netData = yaml.load(fs.readFileSync(networkFile, "utf-8")) as any;
+        if (netData?.networks) groupVar.network = { networks: netData.networks };
+        if (netData?.public_ips) groupVar.public_ips = netData.public_ips;
+      } catch { /* skip malformed */ }
+    }
+
+    // Load ceph config
+    if (fs.existsSync(nodesFile)) {
+      try {
+        const nodesData = yaml.load(fs.readFileSync(nodesFile, "utf-8")) as any;
+        if (nodesData?.ceph) groupVar.ceph = nodesData.ceph;
+      } catch { /* skip malformed */ }
+    }
+
+    // Node list (for cluster join, ceph mon list)
+    groupVar.dc_nodes = dcNodeList.map((n) => ({
+      name: n.name,
+      public_ip: n.public_ip,
+      role: n.role,
+    }));
+
+    // Write group_vars file (Ansible group name = dc name with dashes → underscores)
+    const groupName = dcName.replace(/-/g, "_");
+    const filePath = path.join(groupVarsDir, `${groupName}.yaml`);
+    fs.writeFileSync(filePath, yaml.dump(groupVar, { lineWidth: -1 }));
+
+    log.step(`${filePath.replace(projectPath + path.sep, "")}`);
   }
 }
 

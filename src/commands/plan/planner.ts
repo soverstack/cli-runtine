@@ -10,6 +10,7 @@ import crypto from "crypto";
 
 import {
   ProjectState,
+  NetworkState,
   DesiredNode,
   DesiredService,
   SshKeyRef,
@@ -50,6 +51,15 @@ export function computePlan(
       vms_noop: 0,
     },
   };
+
+  // ── Network immutability check ──────────────────────────────────────
+  const networkErrors = validateNetworkImmutability(projectPath, state);
+  if (networkErrors.length > 0) {
+    for (const err of networkErrors) {
+      log.fail(err);
+    }
+    throw new Error("Network changes blocked. Networks are immutable after bootstrap. You can only add new networks.");
+  }
 
   // ── Phase 1: Bootstrap ──────────────────────────────────────────────
   const bootstrapPhase = planBootstrap(desired.nodes, state);
@@ -149,7 +159,7 @@ function planBootstrap(desiredNodes: DesiredNode[], state: ProjectState): PlanPh
     const existing = state.nodes[node.name];
     const base = {
       node: node.name,
-      address: node.address,
+      public_ip: node.public_ip,
       region: node.region,
       datacenter: node.datacenter,
       role: node.role,
@@ -167,8 +177,8 @@ function planBootstrap(desiredNodes: DesiredNode[], state: ProjectState): PlanPh
       } else {
         // Something changed — determine what
         const changes: Record<string, { old: string; new: string }> = {};
-        if (existing.address !== node.address) {
-          changes.address = { old: existing.address, new: node.address };
+        if (existing.public_ip !== node.public_ip) {
+          changes.public_ip = { old: existing.public_ip, new: node.public_ip };
         }
         if (existing.role !== node.role) {
           changes.role = { old: existing.role, new: node.role };
@@ -216,7 +226,7 @@ function planBootstrap(desiredNodes: DesiredNode[], state: ProjectState): PlanPh
       actions.push({
         type: "orphan",
         node: nodeName,
-        address: nodeState.address,
+        public_ip: nodeState.public_ip,
         region: nodeState.region,
         datacenter: nodeState.datacenter,
         role: nodeState.role,
@@ -412,7 +422,7 @@ function readDesiredState(projectPath: string): DesiredState {
           for (const node of nodesData?.nodes || []) {
             nodes.push({
               name: node.name,
-              address: node.address,
+              public_ip: node.public_ip,
               region: regionName,
               datacenter: dcName,
               role: node.role || "secondary",
@@ -486,6 +496,76 @@ function readDesiredState(projectPath: string): DesiredState {
 
   log.debug(`Desired state: ${nodes.length} nodes, ${services.length} service instances`);
   return { nodes, services };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// NETWORK IMMUTABILITY
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validate that existing networks have not been modified or removed.
+ * Networks are immutable after bootstrap — only additions are allowed.
+ */
+function validateNetworkImmutability(projectPath: string, state: ProjectState): string[] {
+  if (!state.networks || Object.keys(state.networks).length === 0) return [];
+
+  const errors: string[] = [];
+  const inventoryDir = path.join(projectPath, "inventory");
+  if (!fs.existsSync(inventoryDir)) return [];
+
+  for (const [dcName, savedNetworks] of Object.entries(state.networks)) {
+    // Find the current network.yaml for this DC
+    const networkFile = findNetworkFile(inventoryDir, dcName);
+    if (!networkFile) {
+      errors.push(`${dcName}: network.yaml not found but networks were previously configured`);
+      continue;
+    }
+
+    let currentNetworks: Record<string, any> = {};
+    try {
+      const content = yaml.load(fs.readFileSync(networkFile, "utf-8")) as any;
+      currentNetworks = content?.networks || {};
+    } catch {
+      errors.push(`${dcName}: cannot parse network.yaml`);
+      continue;
+    }
+
+    for (const [netName, savedConfig] of Object.entries(savedNetworks)) {
+      if (!(netName in currentNetworks)) {
+        errors.push(`${dcName}: network "${netName}" was removed. Networks cannot be removed after bootstrap.`);
+        continue;
+      }
+
+      const current = currentNetworks[netName];
+
+      if (current.subnet !== savedConfig.subnet) {
+        errors.push(`${dcName}: network "${netName}" subnet changed from ${savedConfig.subnet} to ${current.subnet}. Subnets are immutable after bootstrap.`);
+      }
+
+      if (savedConfig.vlan && !current.vlan) {
+        errors.push(`${dcName}: network "${netName}" VLAN backing was removed. Cannot change transport after bootstrap.`);
+      }
+
+      if (savedConfig.vlan && current.vlan) {
+        if (current.vlan.id !== savedConfig.vlan.id) {
+          errors.push(`${dcName}: network "${netName}" VLAN id changed from ${savedConfig.vlan.id} to ${current.vlan.id}. VLAN ids are immutable after bootstrap.`);
+        }
+        if (current.vlan.interface !== savedConfig.vlan.interface) {
+          errors.push(`${dcName}: network "${netName}" VLAN interface changed from ${savedConfig.vlan.interface} to ${current.vlan.interface}. Interfaces are immutable after bootstrap.`);
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
+function findNetworkFile(inventoryDir: string, dcName: string): string | null {
+  for (const region of fs.readdirSync(inventoryDir, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+    const dcPath = path.join(inventoryDir, region.name, "datacenters", dcName, "network.yaml");
+    if (fs.existsSync(dcPath)) return dcPath;
+  }
+  return null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

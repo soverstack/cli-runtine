@@ -109,7 +109,7 @@ nodes:
 ${nodes
   .map(
     (n) => `  - name: ${n.name}
-    address: ${n.ip}                    # REPLACE with actual IP from provider
+    public_ip: ${n.ip}                  # REPLACE with actual IP from provider
     role: ${n.role}
     capabilities: [${n.capabilities.join(", ")}]
 

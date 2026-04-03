@@ -38,7 +38,6 @@ export function generateNetworkYaml({ ctx, region, datacenter }: NetworkYamlOpti
   );
   const filePath = path.join(dcDir, "network.yaml");
 
-  // Ensure directory exists
   fs.mkdirSync(dcDir, { recursive: true });
 
   const isHub = datacenter.type === "hub";
@@ -48,79 +47,34 @@ export function generateNetworkYaml({ ctx, region, datacenter }: NetworkYamlOpti
     datacenter.name === options.primaryZone;
 
   const regionOctet = getRegionOctet(region.name);
-
-  // Base octet for this datacenter (hub=50, zones start at 10)
   const baseOctet = isHub ? 50 : 10;
 
-  // Generate VLANs section
-  let vlansContent: string;
+  let networksContent: string;
 
   if (isHub) {
-    // Hub: only management, corosync, backup
-    vlansContent = `vlans:
-  - id: 10
-    name: management
+    networksContent = `networks:
+  management:
     subnet: 10.${regionOctet}.${baseOctet}.0/24
     gateway: 10.${regionOctet}.${baseOctet}.1
-    mesh: true
-    mtu: 1500
 
-  - id: 11
-    name: corosync
-    subnet: 10.${regionOctet}.${baseOctet + 1}.0/24
-    mesh: false
-    mtu: 9000
-
-  - id: 40
-    name: backup
-    subnet: 10.${regionOctet}.40.0/24
-    gateway: 10.${regionOctet}.40.1
-    mesh: true
-    mtu: 1500`;
+  backup:
+    subnet: 10.${regionOctet}.40.0/24`;
   } else {
-    // Zone: all VLANs
-    vlansContent = `vlans:
-  - id: 10
-    name: management
-    subnet: 10.${regionOctet}.10.0/24
-    gateway: 10.${regionOctet}.10.1
-    mesh: true
-    mtu: 1500
+    networksContent = `networks:
+  management:
+    subnet: 10.${regionOctet}.${baseOctet}.0/24
+    gateway: 10.${regionOctet}.${baseOctet}.1
 
-  - id: 11
-    name: corosync
-    subnet: 10.${regionOctet}.11.0/24
-    mesh: false
-    mtu: 9000
+  corosync:
+    subnet: 10.${regionOctet}.${baseOctet + 1}.0/24
 
-  - id: 20
-    name: vm-network
-    subnet: 10.${regionOctet}.20.0/24
-    gateway: 10.${regionOctet}.20.1
-    mesh: true
-    mtu: 1500
+  ceph:
+    subnet: 10.${regionOctet}.${baseOctet + 2}.0/24
 
-  - id: 30
-    name: ceph-public
-    subnet: 10.${regionOctet}.30.0/24
-    mesh: false
-    mtu: 9000
-
-  - id: 31
-    name: ceph-cluster
-    subnet: 10.${regionOctet}.31.0/24
-    mesh: false
-    mtu: 9000
-
-  - id: 40
-    name: backup
-    subnet: 10.${regionOctet}.40.0/24
-    gateway: 10.${regionOctet}.40.1
-    mesh: true
-    mtu: 1500`;
+  vm:
+    subnet: 10.${regionOctet}.${baseOctet + 10}.0/24`;
   }
 
-  // Generate public_ips section (only for zones, optional for non-control-plane)
   let publicIpsContent = "";
   if (!isHub) {
     if (isControlPlane) {
@@ -129,33 +83,37 @@ export function generateNetworkYaml({ ctx, region, datacenter }: NetworkYamlOpti
 # PUBLIC IPS (required for control plane)
 # ------------------------------------------------------------------------------
 # Soverstack assigns IPs automatically to services (firewall, dns, ingress, vpn)
+# See: https://soverstack.io/docs/concepts/public-ips
 
 public_ips:
-  type: allocated_block
-  allocated_block:
-    block: ""                           # REQUIRED - e.g., "203.0.113.0/29"
-    gateway: ""                         # REQUIRED - e.g., "203.0.113.1"
-    usable_range: ""                    # REQUIRED - e.g., "203.0.113.2-203.0.113.6"
+  type: block
+  block: ""                             # REQUIRED - e.g., "203.0.113.0/28"
+  gateway: ""                           # REQUIRED - e.g., "203.0.113.1"
+  usable: ""                            # REQUIRED - e.g., "203.0.113.2-203.0.113.14"
 
-  # type: bgp (coming soon)
-  # bgp:
-  #   asn: 210123
-  #   upstream_asn: 64512
-  #   ip_blocks:
-  #     - 203.0.113.0/24`;
+  # Alternative: individual IPs (limited failover, not recommended for production)
+  # type: individual
+  # addresses:
+  #   - ip: 203.0.113.20
+  #     attached_to: pve-eu-paris-01
+
+  # Alternative: BGP (own AS, full control)
+  # type: bgp
+  # asn: 64512
+  # block: 203.0.113.0/24
+  # upstream_peer: 198.51.100.1`;
     } else {
       publicIpsContent = `
 # ------------------------------------------------------------------------------
 # PUBLIC IPS (optional for non-control-plane zones)
 # ------------------------------------------------------------------------------
-# Uncomment if this datacenter has public IPs assigned
+# Uncomment if this datacenter needs public IPs
 
 # public_ips:
-#   type: allocated_block
-#   allocated_block:
-#     block: ""
-#     gateway: ""
-#     usable_range: ""`;
+#   type: block
+#   block: ""
+#   gateway: ""
+#   usable: ""`;
     }
   }
 
@@ -163,20 +121,24 @@ public_ips:
 # NETWORK
 # ==============================================================================
 #
-# Network configuration (VLANs, public IPs).
+# Logical networks for this datacenter.
+# By default, all networks use the WireGuard mesh (no VLAN config needed).
+# Add 'vlan:' to a network for physical VLAN backing (optional, for performance).
+#
+# See: https://soverstack.io/docs/concepts/networking
 #
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# VLANS
-# ------------------------------------------------------------------------------
-# mesh: true  -> Traffic via Headscale (encrypted, cross-DC)
-# mesh: false -> Direct L2 (local performance, same switch)
-#
-# Gateway: Only for mesh: true VLANs (firewall VM deployed by Soverstack)
-# MTU: 1500 for mesh, 9000 (jumbo) for Ceph/Corosync
+${networksContent}
 
-${vlansContent}
+# Optional: add physical VLAN backing for performance-critical networks
+# Example (Ceph on VLAN with jumbo frames):
+#   ceph:
+#     subnet: 10.1.12.0/24
+#     vlan:
+#       id: 12
+#       interface: eth1
+#       mtu: 9000
 ${publicIpsContent}
 `;
 

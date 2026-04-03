@@ -107,7 +107,7 @@ export interface ParsedRegion {
 
 export interface ParsedNode {
   name?: string;
-  address?: string;
+  public_ip?: string;
   role?: string;
   capabilities?: string[];
   bootstrap?: {
@@ -129,29 +129,26 @@ export interface ParsedNodes {
   };
 }
 
-export interface ParsedVlan {
-  id?: number;
-  name?: string;
+export interface ParsedNetworkEntry {
   subnet?: string;
   gateway?: string;
-  mesh?: boolean;
-  mtu?: number;
+  vlan?: {
+    id?: number;
+    interface?: string;
+    mtu?: number;
+  };
 }
 
 export interface ParsedNetwork {
-  vlans?: ParsedVlan[];
+  networks?: Record<string, ParsedNetworkEntry>;
   public_ips?: {
     type?: string;
-    allocated_block?: {
-      block?: string;
-      gateway?: string;
-      usable_range?: string;
-    };
-    bgp?: {
-      asn?: number;
-      upstream_asn?: number;
-      ip_blocks?: string[];
-    };
+    addresses?: Array<{ ip?: string; attached_to?: string }>;
+    block?: string;
+    gateway?: string;
+    usable?: string;
+    asn?: number;
+    upstream_peer?: string;
   };
 }
 
@@ -308,15 +305,8 @@ export const VALID_NODE_ROLES = ["primary", "secondary"];
 export const VALID_NODE_CAPABILITIES = ["compute", "nvme", "ceph", "hdd", "backup", "gpu"];
 export const VALID_CREDENTIAL_TYPES = ["env", "vault", "file"];
 
-export const REQUIRED_ZONE_VLANS = [
-  "management",
-  "corosync",
-  "vm-network",
-  "ceph-public",
-  "ceph-cluster",
-  "backup",
-];
-export const REQUIRED_HUB_VLANS = ["management", "corosync", "backup"];
+export const REQUIRED_ZONE_NETWORKS = ["management", "corosync", "ceph", "vm"];
+export const REQUIRED_HUB_NETWORKS = ["management", "backup"];
 
 /** All valid roles per scope */
 export const VALID_ROLES: Record<string, string[]> = {

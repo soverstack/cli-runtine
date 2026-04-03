@@ -55,9 +55,9 @@ export function stateDate(state: ProjectState): string {
 /**
  * Update a node in state after bootstrap.
  */
-export function markNodeBootstrapped(state: ProjectState, nodeName: string, address: string, region: string, datacenter: string, role: string, configHash: string): void {
+export function markNodeBootstrapped(state: ProjectState, nodeName: string, public_ip: string, region: string, datacenter: string, role: string, configHash: string): void {
   state.nodes[nodeName] = {
-    address,
+    public_ip,
     region,
     datacenter,
     role,
@@ -95,4 +95,22 @@ export function removeService(state: ProjectState, vmId: number): void {
  */
 export function removeNode(state: ProjectState, nodeName: string): void {
   delete state.nodes[nodeName];
+}
+
+/**
+ * Save network config for a datacenter (locked after first bootstrap).
+ * Only adds new networks, never overwrites existing ones.
+ */
+export function lockNetworks(state: ProjectState, dcName: string, networks: Record<string, { subnet: string; vlan?: { id: number; interface: string; mtu: number } }>): void {
+  if (!state.networks) state.networks = {};
+  if (!state.networks[dcName]) state.networks[dcName] = {};
+
+  for (const [name, config] of Object.entries(networks)) {
+    if (!(name in state.networks[dcName])) {
+      state.networks[dcName][name] = {
+        subnet: config.subnet,
+        vlan: config.vlan,
+      };
+    }
+  }
 }

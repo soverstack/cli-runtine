@@ -42,7 +42,7 @@ export interface RegionConfig {
  */
 export interface InventoryNode {
   name: string;
-  address: string;
+  public_ip: string;
   role: "primary" | "secondary";
   capabilities: string[];
   bootstrap?: {
@@ -65,32 +65,33 @@ export interface InventoryCeph {
 }
 
 /**
- * VLAN configuration (from network.yaml)
+ * Network configuration (from network.yaml)
  */
-export interface InventoryVlan {
-  id: number;
+export interface InventoryNetwork {
   name: string;
   subnet: string;
   gateway?: string;
-  mesh: boolean;
-  mtu: number;
+  vlan?: {
+    id: number;
+    interface: string;
+    mtu: number;
+  };
 }
 
 /**
  * Public IPs configuration (from network.yaml)
  */
 export interface InventoryPublicIps {
-  type: "allocated_block" | "bgp";
-  allocated_block?: {
-    block: string;
-    gateway: string;
-    usable_range: string;
-  };
-  bgp?: {
-    asn: number;
-    upstream_asn: number;
-    ip_blocks: string[];
-  };
+  type: "individual" | "block" | "bgp";
+  addresses?: Array<{
+    ip: string;
+    attached_to: string;
+  }>;
+  block?: string;
+  gateway?: string;
+  usable?: string;
+  asn?: number;
+  upstream_peer?: string;
 }
 
 /**
@@ -143,7 +144,7 @@ export interface InventoryDatacenter {
   ceph?: InventoryCeph;
 
   // From network.yaml
-  vlans: InventoryVlan[];
+  networks: Record<string, InventoryNetwork>;
   public_ips?: InventoryPublicIps;
 
   // From ssh.yaml
@@ -232,54 +233,10 @@ export const DEFAULT_FLAVORS: Flavor[] = [
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * VLAN configuration
+ * Network names for zones and hubs
  */
-export interface VlanConfig {
-  id: number;
-  name: string;
-  subnet: string;
-  gateway?: string; // Only for mesh: true VLANs
-  mesh: boolean;
-  mtu: number;
-}
-
-/**
- * Public IPs configuration
- */
-export interface PublicIpsConfig {
-  type: "allocated_block" | "bgp";
-  allocated_block?: {
-    block: string;
-    gateway: string;
-    usable_range: string;
-  };
-  bgp?: {
-    asn: number;
-    upstream_asn: number;
-    ip_blocks: string[];
-  };
-}
-
-/**
- * Default VLANs for zones (with Ceph)
- */
-export const DEFAULT_ZONE_VLANS: VlanConfig[] = [
-  { id: 10, name: "management", subnet: "", gateway: "", mesh: true, mtu: 1500 },
-  { id: 11, name: "corosync", subnet: "", mesh: false, mtu: 9000 },
-  { id: 20, name: "vm-network", subnet: "", gateway: "", mesh: true, mtu: 1500 },
-  { id: 30, name: "ceph-public", subnet: "", mesh: false, mtu: 9000 },
-  { id: 31, name: "ceph-cluster", subnet: "", mesh: false, mtu: 9000 },
-  { id: 40, name: "backup", subnet: "", gateway: "", mesh: true, mtu: 1500 },
-];
-
-/**
- * Default VLANs for hubs (no Ceph, no VMs)
- */
-export const DEFAULT_HUB_VLANS: VlanConfig[] = [
-  { id: 10, name: "management", subnet: "", gateway: "", mesh: true, mtu: 1500 },
-  { id: 11, name: "corosync", subnet: "", mesh: false, mtu: 9000 },
-  { id: 40, name: "backup", subnet: "", gateway: "", mesh: true, mtu: 1500 },
-];
+export const DEFAULT_ZONE_NETWORKS = ["management", "corosync", "ceph", "vm"] as const;
+export const DEFAULT_HUB_NETWORKS = ["management", "backup"] as const;
 
 // ════════════════════════════════════════════════════════════════════════════
 // WORKLOAD TYPES

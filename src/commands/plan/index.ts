@@ -117,7 +117,7 @@ function printNodeAction(action: NodeAction): void {
     : action.type === "orphan" ? chalk.yellow("orphaned (in state but not in inventory)")
     : log.dim("bootstrapped");
 
-  console.log(`    ${sym} ${chalk.white(action.node.padEnd(24))} ${log.val(action.address.padEnd(16))} ${action.role.padEnd(12)} ${status}`);
+  console.log(`    ${sym} ${chalk.white(action.node.padEnd(24))} ${log.val(action.public_ip.padEnd(16))} ${action.role.padEnd(12)} ${status}`);
 
   if (action.changes && log.isVerbose()) {
     for (const [field, ch] of Object.entries(action.changes)) {

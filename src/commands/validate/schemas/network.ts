@@ -5,56 +5,48 @@
 import { z } from "zod";
 import { CidrSchema, PositiveInt } from "./common";
 
-const VlanSchema = z
-  .object({
-    id: z.number().int().min(1, "VLAN id must be a positive integer"),
-    name: z.string().min(1, "VLAN name is required"),
-    subnet: z.union([CidrSchema, z.literal("")]).optional(),
-    gateway: z.string().optional(),
-    mesh: z.boolean(),
-    mtu: PositiveInt.default(1500),
-  })
-  .refine(
-    (v) => !v.mesh || (v.mesh && v.gateway && v.gateway.length > 0),
-    { message: "Mesh VLANs require a gateway address (the firewall VM will be deployed here)", path: ["gateway"] }
-  );
-
-const AllocatedBlockSchema = z.object({
-  block: z.string().default(""),     // Validated as warning by the validators/ layer
-  gateway: z.string().default(""),
-  usable_range: z.string().default(""),
+const VlanBackingSchema = z.object({
+  id: z.number().int().min(1, "VLAN id must be a positive integer"),
+  interface: z.string().min(1, "VLAN interface is required (e.g., eth1)"),
+  mtu: PositiveInt.describe("MTU: 1500 (standard) or 9000 (jumbo frames)"),
 });
 
-const BgpSchema = z.object({
-  asn: PositiveInt.describe("Your ASN number"),
-  upstream_asn: PositiveInt.describe("Upstream provider ASN"),
-  ip_blocks: z.array(z.string()).min(1, "At least one IP block is required"),
+const NetworkEntrySchema = z.object({
+  subnet: z.union([CidrSchema, z.literal("")]),
+  gateway: z.string().optional(),
+  vlan: VlanBackingSchema.optional(),
+});
+
+const IndividualAddressSchema = z.object({
+  ip: z.string().min(1, "IP address is required"),
+  attached_to: z.string().min(1, "attached_to node name is required"),
 });
 
 const PublicIpsSchema = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal("allocated_block"),
-    allocated_block: AllocatedBlockSchema,
+    type: z.literal("individual"),
+    addresses: z.array(IndividualAddressSchema).min(1, "At least one address is required"),
+  }),
+  z.object({
+    type: z.literal("block"),
+    block: z.string().default(""),
+    gateway: z.string().default(""),
+    usable: z.string().default(""),
   }),
   z.object({
     type: z.literal("bgp"),
-    bgp: BgpSchema,
+    asn: PositiveInt.describe("Your ASN number"),
+    block: z.string().min(1, "IP block is required"),
+    upstream_peer: z.string().min(1, "Upstream peer IP is required"),
   }),
 ]);
 
-export const NetworkSchema = z
-  .object({
-    vlans: z
-      .array(VlanSchema)
-      .min(1, "At least one VLAN is required"),
-    public_ips: PublicIpsSchema.optional(),
-  })
-  .refine(
-    (n) => {
-      const ids = n.vlans.map((v) => v.id);
-      return new Set(ids).size === ids.length;
-    },
-    { message: "VLAN ids must be unique within a datacenter", path: ["vlans"] }
-  );
+export const NetworkSchema = z.object({
+  networks: z.record(z.string(), NetworkEntrySchema).refine(
+    (n) => "management" in n,
+    { message: "A 'management' network is required" }
+  ),
+  public_ips: PublicIpsSchema.optional(),
+});
 
 export type Network = z.infer<typeof NetworkSchema>;

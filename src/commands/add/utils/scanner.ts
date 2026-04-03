@@ -211,7 +211,7 @@ import type {
   InventoryRegion,
   InventoryDatacenter,
   InventoryNode,
-  InventoryVlan,
+  InventoryNetwork,
   InventoryPublicIps,
   InventorySshUser,
   InventoryKnockd,
@@ -249,12 +249,12 @@ export function loadInventory(projectPath: string): Inventory {
 
       // Load network.yaml
       const networkYamlPath = path.join(dcPath, "network.yaml");
-      let vlans: InventoryVlan[] = [];
+      let networks: Record<string, InventoryNetwork> = {};
       let publicIps: InventoryPublicIps | undefined;
       if (fs.existsSync(networkYamlPath)) {
         try {
           const content = yaml.load(fs.readFileSync(networkYamlPath, "utf-8")) as any;
-          vlans = content?.vlans || [];
+          networks = content?.networks || {};
           publicIps = content?.public_ips;
         } catch {
           // Invalid network.yaml
@@ -290,7 +290,7 @@ export function loadInventory(projectPath: string): Inventory {
         type: scannedDc.type,
         nodes,
         ceph,
-        vlans,
+        networks,
         public_ips: publicIps,
         rotation_policy: rotationPolicy,
         knockd,

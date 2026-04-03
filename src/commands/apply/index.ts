@@ -106,7 +106,7 @@ export const applyCommand = new Command("apply")
             log.taskFail(action.node, "SSH keys changed but cannot connect to deploy new keys");
             log.errorBlock({
               task: "SSH key rotation",
-              host: `${action.node} (${action.address})`,
+              host: `${action.node} (${action.public_ip})`,
               message: "Keys were modified without using 'soverstack generate ssh'. No backup of previous keys found in .ssh/.previous/",
               suggestion: [
                 "a) If you have the old key: place it in .ssh/.previous/",
@@ -128,8 +128,8 @@ export const applyCommand = new Command("apply")
             const node = desiredNodes.find((n) => n.name === action.node);
             if (node) {
               // TODO: Execute ansible-playbook bootstrap.yaml
-              log.taskOk(action.node, `${log.val(action.address)} ${action.role}`);
-              markNodeBootstrapped(state, action.node, action.address, action.region, action.datacenter, action.role, hashNode(node));
+              log.taskOk(action.node, `${log.val(action.public_ip)} ${action.role}`);
+              markNodeBootstrapped(state, action.node, action.public_ip, action.region, action.datacenter, action.role, hashNode(node));
             }
           }
         }
@@ -151,7 +151,7 @@ export const applyCommand = new Command("apply")
                 }
               }
               log.taskOk(action.node, `SSH keys rotated (${action.sshRotation?.length || 0} user(s))`);
-              markNodeBootstrapped(state, action.node, action.address, action.region, action.datacenter, action.role, hashNode(node));
+              markNodeBootstrapped(state, action.node, action.public_ip, action.region, action.datacenter, action.role, hashNode(node));
               rotatedDcs.add(action.datacenter);
             }
           }
@@ -347,7 +347,7 @@ function readDesiredNodes(projectPath: string): DesiredNode[] {
         for (const node of nodesData?.nodes || []) {
           nodes.push({
             name: node.name,
-            address: node.address,
+            public_ip: node.public_ip,
             region: regionName,
             datacenter: dc.name,
             role: node.role || "secondary",

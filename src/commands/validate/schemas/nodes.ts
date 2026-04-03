@@ -15,7 +15,7 @@ const BootstrapSchema = z.object({
 
 const NodeSchema = z.object({
   name: z.string().min(1, "Node name is required"),
-  address: Ipv4Schema,
+  public_ip: Ipv4Schema,
   role: NodeRoleSchema,
   capabilities: z.array(NodeCapability).default([]),
   bootstrap: BootstrapSchema.optional(),
